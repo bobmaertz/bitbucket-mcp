@@ -12,8 +12,20 @@ import {
 // Mock axios
 vi.mock('axios');
 
+interface MockAxiosInstance {
+  get: ReturnType<typeof vi.fn>;
+  post: ReturnType<typeof vi.fn>;
+  put: ReturnType<typeof vi.fn>;
+  delete: ReturnType<typeof vi.fn>;
+  interceptors: {
+    response: {
+      use: ReturnType<typeof vi.fn>;
+    };
+  };
+}
+
 describe('BitbucketClient', () => {
-  let mockAxiosInstance: any;
+  let mockAxiosInstance: MockAxiosInstance;
 
   beforeEach(() => {
     mockAxiosInstance = {
@@ -28,7 +40,7 @@ describe('BitbucketClient', () => {
       },
     };
 
-    (axios.create as any) = vi.fn(() => mockAxiosInstance);
+    vi.mocked(axios.create).mockReturnValue(mockAxiosInstance as never);
   });
 
   afterEach(() => {
@@ -37,12 +49,13 @@ describe('BitbucketClient', () => {
 
   describe('constructor', () => {
     it('should create a client with default baseURL', () => {
-      const client = new BitbucketClient({
+      new BitbucketClient({
         username: 'testuser',
         appPassword: 'testpass',
       });
 
-      expect(axios.create).toHaveBeenCalledWith(
+      const createMock = vi.mocked(axios.create);
+      expect(createMock).toHaveBeenCalledWith(
         expect.objectContaining({
           baseURL: 'https://api.bitbucket.org/2.0',
           timeout: 30000,
@@ -51,13 +64,14 @@ describe('BitbucketClient', () => {
     });
 
     it('should create a client with custom baseURL', () => {
-      const client = new BitbucketClient({
+      new BitbucketClient({
         username: 'testuser',
         appPassword: 'testpass',
         baseURL: 'https://custom.api.com',
       });
 
-      expect(axios.create).toHaveBeenCalledWith(
+      const createMock = vi.mocked(axios.create);
+      expect(createMock).toHaveBeenCalledWith(
         expect.objectContaining({
           baseURL: 'https://custom.api.com',
         })
@@ -65,13 +79,14 @@ describe('BitbucketClient', () => {
     });
 
     it('should create a client with custom timeout', () => {
-      const client = new BitbucketClient({
+      new BitbucketClient({
         username: 'testuser',
         appPassword: 'testpass',
         timeout: 60000,
       });
 
-      expect(axios.create).toHaveBeenCalledWith(
+      const createMock = vi.mocked(axios.create);
+      expect(createMock).toHaveBeenCalledWith(
         expect.objectContaining({
           timeout: 60000,
         })
@@ -79,7 +94,7 @@ describe('BitbucketClient', () => {
     });
 
     it('should set up response interceptor', () => {
-      const client = new BitbucketClient({
+      new BitbucketClient({
         username: 'testuser',
         appPassword: 'testpass',
       });
@@ -169,18 +184,17 @@ describe('BitbucketClient', () => {
   });
 
   describe('error handling', () => {
-    let client: BitbucketClient;
-    let errorHandler: (error: any) => never;
+    let errorHandler: (error: unknown) => never;
 
     beforeEach(() => {
-      client = new BitbucketClient({
+      new BitbucketClient({
         username: 'testuser',
         appPassword: 'testpass',
       });
 
       // Capture the error handler from the interceptor
-      const interceptorCall = (mockAxiosInstance.interceptors.response.use as any).mock.calls[0];
-      errorHandler = interceptorCall[1];
+      const interceptorCall = vi.mocked(mockAxiosInstance.interceptors.response.use).mock.calls[0];
+      errorHandler = interceptorCall[1] as (error: unknown) => never;
     });
 
     it('should throw BitbucketError for network errors', () => {
@@ -242,8 +256,8 @@ describe('BitbucketClient', () => {
 
       try {
         errorHandler(error);
-      } catch (e: any) {
-        expect(e.retryAfter).toBe(60);
+      } catch (e) {
+        expect((e as RateLimitError).retryAfter).toBe(60);
       }
     });
 
@@ -258,9 +272,9 @@ describe('BitbucketClient', () => {
 
       try {
         errorHandler(error);
-      } catch (e: any) {
+      } catch (e) {
         expect(e).toBeInstanceOf(RateLimitError);
-        expect(e.retryAfter).toBeUndefined();
+        expect((e as RateLimitError).retryAfter).toBeUndefined();
       }
     });
 
