@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { PaginationHelper } from './pagination.js';
-import type { PaginatedResponse } from '../types/common.js';
 
 describe('PaginationHelper', () => {
   describe('getAllPages', () => {
