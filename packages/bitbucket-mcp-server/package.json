@@ -1,0 +1,37 @@
+{
+  "name": "bitbucket-mcp-server",
+  "version": "1.0.0",
+  "description": "Model Context Protocol server for Bitbucket Cloud",
+  "type": "module",
+  "bin": {
+    "bitbucket-mcp-server": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "bitbucket",
+    "llm",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "bitbucket-api": "file:../bitbucket-api"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.50",
+    "typescript": "^5.6.2",
+    "tsx": "^4.19.1",
+    "vitest": "^1.6.0"
+  }
+}
