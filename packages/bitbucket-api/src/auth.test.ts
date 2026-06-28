@@ -1,97 +1,61 @@
 import { describe, it, expect } from 'vitest';
-import { AuthHandler } from './auth.js';
+import { AuthHandler, resolveCredentials } from './auth.js';
+
+describe('resolveCredentials', () => {
+  it('prefers email + apiToken', () => {
+    const { identity, secret, usedLegacy } = resolveCredentials({
+      email: 'user@example.com',
+      apiToken: 'token123',
+    });
+    expect(identity).toBe('user@example.com');
+    expect(secret).toBe('token123');
+    expect(usedLegacy).toBe(false);
+  });
+
+  it('falls back to legacy username + appPassword', () => {
+    const { identity, secret, usedLegacy } = resolveCredentials({
+      username: 'legacyuser',
+      appPassword: 'legacypass',
+    });
+    expect(identity).toBe('legacyuser');
+    expect(secret).toBe('legacypass');
+    expect(usedLegacy).toBe(true);
+  });
+
+  it('throws when identity is missing', () => {
+    expect(() => resolveCredentials({ apiToken: 'token' })).toThrow(/email \+ API token/);
+  });
+
+  it('throws when secret is missing', () => {
+    expect(() => resolveCredentials({ email: 'user@example.com' })).toThrow(/email \+ API token/);
+  });
+});
 
 describe('AuthHandler', () => {
-  describe('constructor', () => {
-    it('should create an auth handler with valid credentials', () => {
-      const handler = new AuthHandler({
-        username: 'testuser',
-        appPassword: 'testpassword',
-      });
-
-      expect(handler).toBeInstanceOf(AuthHandler);
-    });
-
-    it('should throw error if username is missing', () => {
-      expect(() => {
-        new AuthHandler({
-          username: '',
-          appPassword: 'testpassword',
-        });
-      }).toThrow('Username and app password are required for authentication');
-    });
-
-    it('should throw error if appPassword is missing', () => {
-      expect(() => {
-        new AuthHandler({
-          username: 'testuser',
-          appPassword: '',
-        });
-      }).toThrow('Username and app password are required for authentication');
-    });
-
-    it('should throw error if both credentials are missing', () => {
-      expect(() => {
-        new AuthHandler({
-          username: '',
-          appPassword: '',
-        });
-      }).toThrow('Username and app password are required for authentication');
-    });
+  it('builds a Basic header from email:apiToken', () => {
+    const handler = new AuthHandler({ email: 'user@example.com', apiToken: 'token123' });
+    const expected = Buffer.from('user@example.com:token123').toString('base64');
+    expect(handler.getAuthHeader()).toBe(`Basic ${expected}`);
   });
 
-  describe('getAuthHeader', () => {
-    it('should return a properly formatted Basic Auth header', () => {
-      const handler = new AuthHandler({
-        username: 'testuser',
-        appPassword: 'testpassword',
-      });
-
-      const authHeader = handler.getAuthHeader();
-
-      // Expected: Basic base64(testuser:testpassword)
-      const expectedEncoded = Buffer.from('testuser:testpassword').toString('base64');
-      expect(authHeader).toBe(`Basic ${expectedEncoded}`);
-    });
-
-    it('should properly encode special characters in credentials', () => {
-      const handler = new AuthHandler({
-        username: 'user@example.com',
-        appPassword: 'p@ssw0rd!',
-      });
-
-      const authHeader = handler.getAuthHeader();
-      const expectedEncoded = Buffer.from('user@example.com:p@ssw0rd!').toString('base64');
-      expect(authHeader).toBe(`Basic ${expectedEncoded}`);
-    });
+  it('builds a Basic header from legacy credentials', () => {
+    const handler = new AuthHandler({ username: 'testuser', appPassword: 'testpass' });
+    const expected = Buffer.from('testuser:testpass').toString('base64');
+    expect(handler.getAuthHeader()).toBe(`Basic ${expected}`);
   });
 
-  describe('getHeaders', () => {
-    it('should return an object with Authorization header', () => {
-      const handler = new AuthHandler({
-        username: 'testuser',
-        appPassword: 'testpassword',
-      });
+  it('returns headers that spread cleanly', () => {
+    const handler = new AuthHandler({ email: 'user@example.com', apiToken: 'token123' });
+    const headers = { 'Content-Type': 'application/json', ...handler.getHeaders() };
+    expect(headers).toHaveProperty('Content-Type');
+    expect(headers.Authorization).toContain('Basic ');
+  });
 
-      const headers = handler.getHeaders();
-
-      expect(headers).toHaveProperty('Authorization');
-      expect(headers.Authorization).toContain('Basic ');
-    });
-
-    it('should return headers that can be spread into other header objects', () => {
-      const handler = new AuthHandler({
-        username: 'testuser',
-        appPassword: 'testpassword',
-      });
-
-      const customHeaders = {
-        'Content-Type': 'application/json',
-        ...handler.getHeaders(),
-      };
-
-      expect(customHeaders).toHaveProperty('Content-Type');
-      expect(customHeaders).toHaveProperty('Authorization');
-    });
+  it('never exposes the token through enumeration or serialization', () => {
+    const handler = new AuthHandler({ email: 'user@example.com', apiToken: 'super-secret-token' });
+    const serialized = JSON.stringify(handler);
+    expect(serialized).not.toContain('super-secret-token');
+    // The raw secret is not an own-enumerable property.
+    expect(JSON.stringify(Object.values(handler))).not.toContain('super-secret-token');
   });
 });

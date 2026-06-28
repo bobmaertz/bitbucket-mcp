@@ -26,7 +26,8 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
-    "bitbucket-api": "file:../bitbucket-api"
+    "bitbucket-api": "file:../bitbucket-api",
+    "bitbucket-core": "file:../bitbucket-core"
   },
   "devDependencies": {
     "@types/node": "^18.19.50",

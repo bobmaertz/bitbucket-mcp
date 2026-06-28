@@ -2,16 +2,21 @@
 
 A Model Context Protocol (MCP) server that provides LLM applications with access to Bitbucket Cloud repositories through a standardized interface.
 
+> **⚠️ Current source of truth:** [`AUDIT.md`](../AUDIT.md) documents the live
+> auth model (Atlassian API tokens), the **read-only** tool surface, the test
+> tiers, and the roadmap. This README predates that restructure in places.
+
 ## Overview
 
 This project implements an MCP server for Bitbucket Cloud REST API 2.0, enabling AI assistants like Claude to interact with Bitbucket repositories, pull requests, comments, tasks, and branches.
 
 ## Architecture
 
-The project is organized as a monorepo with two main packages:
+The project is organized as a monorepo with three packages:
 
 - **`bitbucket-api`**: Isolated REST API client for Bitbucket Cloud
-- **`bitbucket-mcp-server`**: MCP server implementation using the API client
+- **`bitbucket-core`**: Shared config, logging, presenters, and operations (used by the MCP server and a future CLI)
+- **`bitbucket-mcp-server`**: MCP server implementation (thin adapter over `bitbucket-core`)
 
 ## Features
 

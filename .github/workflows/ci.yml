@@ -54,6 +54,26 @@ jobs:
       - name: Run tests
         run: npm test
 
+  contract:
+    name: Contract Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run contract tests against the vendored Bitbucket spec
+        run: npm run test:contract
+
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -105,7 +125,7 @@ jobs:
   all-checks:
     name: All Checks Passed
     runs-on: ubuntu-latest
-    needs: [lint, test, build, type-check]
+    needs: [lint, test, contract, build, type-check]
     if: always()
 
     steps:
@@ -113,6 +133,7 @@ jobs:
         run: |
           if [ "${{ needs.lint.result }}" != "success" ] || \
              [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.contract.result }}" != "success" ] || \
              [ "${{ needs.build.result }}" != "success" ] || \
              [ "${{ needs.type-check.result }}" != "success" ]; then
             echo "One or more checks failed"

@@ -1,20 +1,35 @@
+import { redactSecrets } from './redact.js';
+
 /**
- * Base error class for Bitbucket API errors
+ * Base error class for Bitbucket API errors.
+ *
+ * Error messages are scrubbed of credential-looking substrings, and
+ * serialization (`toJSON`) exposes only an allowlist of safe fields — never
+ * raw request config, headers, or upstream response bodies — so a credential
+ * can never leak through a logged or returned error.
  */
 export class BitbucketError extends Error {
-  constructor(
-    message: string,
-    public statusCode?: number,
-    public response?: unknown
-  ) {
-    super(message);
+  readonly statusCode?: number;
+
+  constructor(message: string, statusCode?: number) {
+    super(redactSecrets(message));
     this.name = 'BitbucketError';
+    this.statusCode = statusCode;
     Object.setPrototypeOf(this, BitbucketError.prototype);
+  }
+
+  /** Safe, allowlisted serialization — no headers/config/response bodies. */
+  toJSON(): { name: string; message: string; statusCode?: number } {
+    return {
+      name: this.name,
+      message: this.message,
+      statusCode: this.statusCode,
+    };
   }
 }
 
 /**
- * Authentication error
+ * Authentication error (401).
  */
 export class AuthenticationError extends BitbucketError {
   constructor(message: string = 'Authentication failed') {
@@ -25,7 +40,7 @@ export class AuthenticationError extends BitbucketError {
 }
 
 /**
- * Resource not found error
+ * Resource not found error (404).
  */
 export class NotFoundError extends BitbucketError {
   constructor(resource: string) {
@@ -36,21 +51,25 @@ export class NotFoundError extends BitbucketError {
 }
 
 /**
- * Rate limit exceeded error
+ * Rate limit exceeded error (429).
  */
 export class RateLimitError extends BitbucketError {
-  constructor(
-    message: string = 'Rate limit exceeded',
-    public retryAfter?: number
-  ) {
+  readonly retryAfter?: number;
+
+  constructor(message: string = 'Rate limit exceeded', retryAfter?: number) {
     super(message, 429);
     this.name = 'RateLimitError';
+    this.retryAfter = retryAfter;
     Object.setPrototypeOf(this, RateLimitError.prototype);
+  }
+
+  toJSON(): { name: string; message: string; statusCode?: number; retryAfter?: number } {
+    return { ...super.toJSON(), retryAfter: this.retryAfter };
   }
 }
 
 /**
- * Validation error
+ * Validation error (400).
  */
 export class ValidationError extends BitbucketError {
   constructor(message: string) {
@@ -61,7 +80,7 @@ export class ValidationError extends BitbucketError {
 }
 
 /**
- * Permission denied error
+ * Permission denied error (403).
  */
 export class PermissionError extends BitbucketError {
   constructor(message: string = 'Permission denied') {

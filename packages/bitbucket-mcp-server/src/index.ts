@@ -1,43 +1,42 @@
 #!/usr/bin/env node
 
 /**
- * Bitbucket MCP Server
- * Entry point for the Model Context Protocol server
+ * Bitbucket MCP Server — entry point.
  */
 
-import { loadConfig, validateConfig } from './config.js';
+import { loadConfig, validateConfig, createLogger, publicConfig } from 'bitbucket-core';
 import { createServer, startServer } from './server.js';
 
-async function main() {
-  try {
-    // Load and validate configuration
-    const config = loadConfig();
-    validateConfig(config);
+async function main(): Promise<void> {
+  const config = loadConfig();
+  validateConfig(config);
 
-    // Create the MCP server
-    const server = createServer(config);
+  const logger = createLogger(config.logLevel);
 
-    // Start the server with stdio transport
-    await startServer(server);
-  } catch (error) {
-    console.error('Fatal error starting Bitbucket MCP Server:', error);
-    process.exit(1);
+  if (config.usedLegacyAuth) {
+    logger.warn(
+      'Using deprecated BITBUCKET_USERNAME/BITBUCKET_APP_PASSWORD. Atlassian is removing App Passwords in 2026 — switch to BITBUCKET_EMAIL + BITBUCKET_API_TOKEN.'
+    );
   }
+
+  logger.debug('Loaded config:', publicConfig(config));
+
+  const server = createServer(config);
+  await startServer(server);
 }
 
-// Handle process signals for graceful shutdown
 process.on('SIGINT', () => {
-  console.error('Received SIGINT, shutting down...');
+  process.stderr.write('Received SIGINT, shutting down...\n');
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  console.error('Received SIGTERM, shutting down...');
+  process.stderr.write('Received SIGTERM, shutting down...\n');
   process.exit(0);
 });
 
-// Start the server
 main().catch((error) => {
-  console.error('Unhandled error in main:', error);
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`Fatal error starting Bitbucket MCP Server: ${message}\n`);
   process.exit(1);
 });

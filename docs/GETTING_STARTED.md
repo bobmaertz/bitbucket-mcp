@@ -2,12 +2,19 @@
 
 This guide will help you set up and start using the Bitbucket MCP Server.
 
+> **⚠️ Current source of truth:** See [`AUDIT.md`](../AUDIT.md) and
+> [`.env.example`](../.env.example). Authentication now uses an **Atlassian API
+> token** (`BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN`) — app passwords are
+> deprecated by Atlassian and only kept as a fallback. The MCP surface is now
+> **read-only**. Sections below referring to app passwords or write tools are
+> historical.
+
 ## Prerequisites
 
 - Node.js 18 or higher
 - npm (comes with Node.js)
 - A Bitbucket Cloud account
-- Bitbucket app password (instructions below)
+- An Atlassian API token (create at id.atlassian.com → Security → API tokens)
 
 ## Installation
 

@@ -1,0 +1,5 @@
+node_modules
+dist
+package-lock.json
+# Vendored upstream spec — refreshed via scripts/refresh-spec.mjs, not hand-edited
+packages/bitbucket-core/contract/
