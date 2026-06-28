@@ -41,6 +41,9 @@ export class BitbucketAPI {
 // Export types
 export * from './types/index.js';
 export * from './utils/errors.js';
+export * from './utils/pagination.js';
+export * from './utils/redact.js';
 export * from './client.js';
 export * from './auth.js';
+export * from './secret.js';
 export * from './resources/index.js';

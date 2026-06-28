@@ -1,159 +1,73 @@
 /**
- * MCP Server implementation for Bitbucket
+ * MCP server wiring. Thin adapter: builds the API client + logger from config,
+ * exposes the read-only tool surface, and routes calls to core operations.
  */
 
+import { createRequire } from 'node:module';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { BitbucketAPI } from 'bitbucket-api';
-import type { ServerConfig } from './config.js';
-import { registerPullRequestTools } from './tools/pullrequests.js';
-import { registerCommentTools } from './tools/comments.js';
-import { registerTaskTools } from './tools/tasks.js';
-import { registerBranchTools } from './tools/branches.js';
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  type CallToolResult,
+} from '@modelcontextprotocol/sdk/types.js';
+import { createApi, createLogger, type CoreConfig } from 'bitbucket-core';
+import { readOnlyTools, handlers, type ToolContext } from './tools.js';
+
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json') as { version: string };
 
 /**
- * Create and configure the MCP server
+ * Create and configure the MCP server. The credential is confined to the API
+ * client; tool handlers receive only non-secret target defaults + a logger.
  */
-export function createServer(config: ServerConfig): Server {
+export function createServer(config: CoreConfig): Server {
   const server = new Server(
-    {
-      name: 'bitbucket-mcp-server',
-      version: '1.0.0',
-    },
-    {
-      capabilities: {
-        tools: {},
-      },
-    }
+    { name: 'bitbucket-mcp-server', version },
+    { capabilities: { tools: {} } }
   );
 
-  // Initialize Bitbucket API client
-  const bitbucket = new BitbucketAPI({
-    username: config.username,
-    appPassword: config.appPassword,
-  });
-
-  // Create context for tool handlers
-  const toolContext = {
-    bitbucket,
-    config,
+  const logger = createLogger(config.logLevel);
+  const context: ToolContext = {
+    api: createApi(config),
+    defaults: { workspace: config.workspace, defaultRepo: config.defaultRepo },
+    logger,
   };
 
-  // Register all tools
-  const allTools = [
-    ...registerPullRequestTools(),
-    ...registerCommentTools(),
-    ...registerTaskTools(),
-    ...registerBranchTools(),
-  ];
+  server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: readOnlyTools }));
 
-  // Handle list_tools request
-  server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: allTools,
-  }));
-
-  // Handle call_tool request
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args = {} } = request.params;
+    const handler = handlers[name];
+
+    if (!handler) {
+      return errorResult(`Unknown tool: ${name}`);
+    }
 
     try {
-      // Route to appropriate tool handler
-      switch (name) {
-        // Pull Request Tools
-        case 'bitbucket_list_pull_requests':
-          return await handleListPullRequests(toolContext, args);
-        case 'bitbucket_get_pull_request':
-          return await handleGetPullRequest(toolContext, args);
-        case 'bitbucket_get_pr_commits':
-          return await handleGetPRCommits(toolContext, args);
-        case 'bitbucket_get_pr_diff':
-          return await handleGetPRDiff(toolContext, args);
-
-        // Comment Tools
-        case 'bitbucket_list_pr_comments':
-          return await handleListPRComments(toolContext, args);
-        case 'bitbucket_get_comment':
-          return await handleGetComment(toolContext, args);
-        case 'bitbucket_create_comment':
-          return await handleCreateComment(toolContext, args);
-        case 'bitbucket_delete_comment':
-          return await handleDeleteComment(toolContext, args);
-
-        // Task Tools
-        case 'bitbucket_list_pr_tasks':
-          return await handleListPRTasks(toolContext, args);
-        case 'bitbucket_get_task':
-          return await handleGetTask(toolContext, args);
-        case 'bitbucket_create_task':
-          return await handleCreateTask(toolContext, args);
-        case 'bitbucket_update_task':
-          return await handleUpdateTask(toolContext, args);
-
-        // Branch Tools
-        case 'bitbucket_list_branches':
-          return await handleListBranches(toolContext, args);
-        case 'bitbucket_get_branch':
-          return await handleGetBranch(toolContext, args);
-        case 'bitbucket_create_branch':
-          return await handleCreateBranch(toolContext, args);
-
-        default:
-          throw new Error(`Unknown tool: ${name}`);
-      }
+      return await handler(context, args);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${errorMessage}`,
-          },
-        ],
-        isError: true,
-      };
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Tool ${name} failed:`, message);
+      return errorResult(message);
     }
   });
 
   return server;
 }
 
+function errorResult(message: string): CallToolResult {
+  return {
+    content: [{ type: 'text', text: `Error: ${message}` }],
+    isError: true,
+  };
+}
+
 /**
- * Start the MCP server with stdio transport
+ * Start the MCP server over stdio (stdout is reserved for the MCP protocol).
  */
 export async function startServer(server: Server): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-
-  // Log server ready to stderr (stdout is used for MCP protocol)
-  console.error('Bitbucket MCP Server running on stdio');
+  process.stderr.write('Bitbucket MCP Server running on stdio\n');
 }
-
-// Import tool handlers (these will be implemented in the tools files)
-import {
-  handleListPullRequests,
-  handleGetPullRequest,
-  handleGetPRCommits,
-  handleGetPRDiff,
-} from './tools/pullrequests.js';
-
-import {
-  handleListPRComments,
-  handleGetComment,
-  handleCreateComment,
-  handleDeleteComment,
-} from './tools/comments.js';
-
-import {
-  handleListPRTasks,
-  handleGetTask,
-  handleCreateTask,
-  handleUpdateTask,
-} from './tools/tasks.js';
-
-import { handleListBranches, handleGetBranch, handleCreateBranch } from './tools/branches.js';
-
-export type ToolContext = {
-  bitbucket: BitbucketAPI;
-  config: ServerConfig;
-};
