@@ -1,14 +1,14 @@
 # Bitbucket MCP Server
 
-A Model Context Protocol (MCP) server that provides LLM applications with access to Bitbucket Cloud repositories through a standardized interface.
+A Model Context Protocol (MCP) server that provides LLM applications with read-only access to Bitbucket Cloud repositories through a standardized interface.
 
-> **⚠️ Current source of truth:** [`AUDIT.md`](../AUDIT.md) documents the live
-> auth model (Atlassian API tokens), the **read-only** tool surface, the test
-> tiers, and the roadmap. This README predates that restructure in places.
+> **Audit & roadmap tracking:** the security/quality audit findings and the feature roadmap are
+> tracked on the Todoist **"Bitbucket MCP"** board, not in this repo. This README is the
+> reference for the live auth model, tool surface, and tests.
 
 ## Overview
 
-This project implements an MCP server for Bitbucket Cloud REST API 2.0, enabling AI assistants like Claude to interact with Bitbucket repositories, pull requests, comments, tasks, and branches.
+This project implements an MCP server for Bitbucket Cloud REST API 2.0, enabling AI assistants like Claude to read Bitbucket repositories, pull requests, comments, tasks, and branches. The current tool surface is **read-only**.
 
 ## Architecture
 
@@ -18,97 +18,44 @@ The project is organized as a monorepo with three packages:
 - **`bitbucket-core`**: Shared config, logging, presenters, and operations (used by the MCP server and a future CLI)
 - **`bitbucket-mcp-server`**: MCP server implementation (thin adapter over `bitbucket-core`)
 
-## Features
-
-### Supported Operations
-
-#### Pull Requests
-
-- List pull requests for a repository
-- Get details of a specific pull request
-- Get commits in a pull request
-- Get diff for a pull request
-
-#### Comments
-
-- List all comments on a pull request
-- Get a specific comment
-- Create new comments
-- Delete comments
-
-#### Tasks
-
-- List all tasks on a pull request
-- Get a specific task
-- Create new tasks
-- Update task state (resolve/unresolve)
-
-#### Branches
-
-- List repository branches
-- Get details of a specific branch
-- Create new branches
-
 ## Installation
 
 ### Prerequisites
 
 - Node.js 18 or higher
-- npm or pnpm
-- Bitbucket Cloud account with app password
+- npm
+- A Bitbucket Cloud account and an Atlassian API token (see below)
 
 ### Setup
 
-1. Clone the repository:
-
 ```bash
 git clone <repository-url>
-cd bitbucket_mcp
-```
-
-2. Install dependencies:
-
-```bash
+cd bitbucket-mcp
 npm install
-```
-
-3. Build the packages:
-
-```bash
 npm run build
 ```
 
 ## Configuration
 
-### Environment Variables
+Configuration is via environment variables (12-factor). Authentication uses an **Atlassian API
+token** with HTTP Basic auth — the username is your account **email**, the password is the token.
+App passwords are deprecated by Atlassian (removal in 2026) and only accepted as a fallback.
 
-Create a `.env` file or set the following environment variables:
+Create an API token (with scopes) at
+<https://id.atlassian.com/manage-profile/security/api-tokens>.
 
-```bash
-# Required
-BITBUCKET_WORKSPACE=your-workspace
-BITBUCKET_USERNAME=your-username
-BITBUCKET_APP_PASSWORD=your-app-password
+| Env var                                         | Required        | Notes                                                                   |
+| ----------------------------------------------- | --------------- | ----------------------------------------------------------------------- |
+| `BITBUCKET_WORKSPACE`                           | yes             | Workspace ID.                                                           |
+| `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN`       | yes (canonical) | Basic auth `email:token`; token minted with scopes at id.atlassian.com. |
+| `BITBUCKET_USERNAME` + `BITBUCKET_APP_PASSWORD` | fallback        | Deprecated; emits a warning; API-token pair wins if both set.           |
+| `BITBUCKET_DEFAULT_REPO`                        | no              | Default repo when a tool omits `repo`.                                  |
+| `LOG_LEVEL`                                     | no              | `debug`/`info`/`warn`/`error` (default `info`).                         |
+| `BITBUCKET_ALLOW_WRITES`                        | no              | Gates future write tools (default off).                                 |
 
-# Optional
-BITBUCKET_DEFAULT_REPO=your-default-repo
-LOG_LEVEL=info
-```
+See [`.env.example`](../.env.example) for a template.
 
-### Creating a Bitbucket App Password
-
-1. Go to Bitbucket Settings > Personal Bitbucket settings > App passwords
-2. Click "Create app password"
-3. Give it a label (e.g., "MCP Server")
-4. Select the required permissions:
-   - **Repositories**: Read, Write
-   - **Pull requests**: Read, Write
-   - **Issues**: Read (if using tasks)
-5. Copy the generated password
-
-### MCP Client Configuration
-
-#### Claude Desktop
+### MCP Client Configuration (Claude Desktop)
 
 Add to your `claude_desktop_config.json`:
 
@@ -117,247 +64,102 @@ Add to your `claude_desktop_config.json`:
   "mcpServers": {
     "bitbucket": {
       "command": "node",
-      "args": ["/absolute/path/to/bitbucket_mcp/packages/bitbucket-mcp-server/dist/index.js"],
+      "args": ["/absolute/path/to/bitbucket-mcp/packages/bitbucket-mcp-server/dist/index.js"],
       "env": {
         "BITBUCKET_WORKSPACE": "your-workspace",
-        "BITBUCKET_USERNAME": "your-username",
-        "BITBUCKET_APP_PASSWORD": "your-app-password"
+        "BITBUCKET_EMAIL": "you@example.com",
+        "BITBUCKET_API_TOKEN": "your-api-token",
+        "BITBUCKET_DEFAULT_REPO": "your-repo"
       }
     }
   }
 }
 ```
 
+## MCP Tools (read-only)
+
+`workspace`/`repo` default to `BITBUCKET_WORKSPACE` / `BITBUCKET_DEFAULT_REPO`. Output is compact
+JSON with lean fields only (no rendered HTML, short commit hashes, null/empty omitted), a single
+page plus a `has_more`/`page` cursor (no auto-pagination). Write operations
+(merge/approve/decline/comment/task/branch creation) are **not** exposed.
+
+| Tool                           | Inputs                                                                        | Returns                                                                                                                     |
+| ------------------------------ | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `bitbucket_list_pull_requests` | `workspace?`, `repo?`, `state?`(OPEN), `query?`, `sort?`, `page?`, `pagelen?` | `{items[{id,title,state,author,source_branch,dest_branch,comment_count,task_count,updated_on,url}], page, has_more, total}` |
+| `bitbucket_get_pull_request`   | `workspace?`, `repo?`, `id*`                                                  | PR + description, reviewers, participants/approvals                                                                         |
+| `bitbucket_get_pr_commits`     | `workspace?`, `repo?`, `id*`, `page?`                                         | `{items[{hash,message,author,date}], …}`                                                                                    |
+| `bitbucket_get_pr_diff`        | `workspace?`, `repo?`, `id*`, `max_lines?`(200)                               | `{diff, truncated, total_lines, files_changed}`                                                                             |
+| `bitbucket_list_pr_comments`   | `workspace?`, `repo?`, `id*`, `page?`                                         | `{items[{id,author,content,created_on,inline,parent_id,deleted}], …}`                                                       |
+| `bitbucket_get_comment`        | `workspace?`, `repo?`, `pr_id*`, `comment_id*`                                | single comment                                                                                                              |
+| `bitbucket_list_pr_tasks`      | `workspace?`, `repo?`, `id*`, `page?`                                         | `{items[{id,content,state,creator,created_on}], …}`                                                                         |
+| `bitbucket_get_task`           | `workspace?`, `repo?`, `pr_id*`, `task_id*`                                   | single task                                                                                                                 |
+| `bitbucket_list_branches`      | `workspace?`, `repo?`, `query?`, `sort?`, `page?`                             | `{items[{name,target_hash,target_date,author,message}], …}`                                                                 |
+| `bitbucket_get_branch`         | `workspace?`, `repo?`, `name*`                                                | single branch                                                                                                               |
+
+(`*` = required.)
+
+### Usage Examples
+
+Once configured with an MCP client like Claude Desktop, ask in natural language:
+
+- "List the open pull requests in the default repo"
+- "Show me the comments on pull request #42"
+- "What tasks are open on PR #15?"
+- "List the branches and their latest commits"
+
 ## Development
 
 ### Project Structure
 
 ```
-bitbucket_mcp/
+bitbucket-mcp/
 ├── packages/
-│   ├── bitbucket-api/          # REST API client package
-│   │   ├── src/
-│   │   │   ├── client.ts       # HTTP client
-│   │   │   ├── auth.ts         # Authentication
-│   │   │   ├── types/          # TypeScript types
-│   │   │   └── resources/      # API resources
-│   │   └── package.json
-│   │
-│   └── bitbucket-mcp-server/   # MCP server package
-│       ├── src/
-│       │   ├── index.ts        # Entry point
-│       │   ├── server.ts       # Server setup
-│       │   ├── tools/          # MCP tools
-│       │   └── resources/      # MCP resources
-│       └── package.json
-│
+│   ├── bitbucket-api/          # REST API client (auth, client, resources, types)
+│   ├── bitbucket-core/         # Shared config, logging, presenters, operations
+│   │   └── contract/           # Vendored Bitbucket OpenAPI spec (contract tests)
+│   └── bitbucket-mcp-server/   # MCP server (index.ts, server.ts, tools.ts)
 ├── docs/
-│   └── ai/
-│       ├── DESIGN.md           # Design document
-│       └── IMPLEMENTATION_PLAN.md
 └── package.json                # Root workspace config
 ```
 
 ### Available Scripts
 
 ```bash
-# Build all packages
-npm run build
-
-# Run tests
-npm test
-
-# Lint code
-npm run lint
-
-# Format code
-npm run format
-
-# Clean build artifacts
-npm run clean
+npm run build          # Build all packages
+npm test               # Unit + integration tests
+npm run test:contract  # Contract tests against the vendored Bitbucket spec
+npm run lint           # ESLint
+npm run format         # Prettier
 ```
 
 ### Running the MCP Server
 
-For development:
-
 ```bash
-cd packages/bitbucket-mcp-server
-npm run dev
-```
+# Development
+cd packages/bitbucket-mcp-server && npm run dev
 
-For production:
-
-```bash
+# Production
 node packages/bitbucket-mcp-server/dist/index.js
 ```
 
-## Usage Examples
-
-Once configured with an MCP client like Claude Desktop, you can use natural language to interact with Bitbucket:
-
-- "List all open pull requests in the main repository"
-- "Show me the comments on pull request #42"
-- "What tasks are pending on PR #15?"
-- "List all branches in the repository"
-- "Create a comment on PR #10 saying 'Looks good to me!'"
-
 ## Testing
 
-### Unit Tests
+| Tier                | Command                      | What it proves                                                                                                          |
+| ------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Unit + integration  | `npm test`                   | Logic + a real local-HTTP integration test (axios + auth + retry + pagination + presenters end to end). Fast, hermetic. |
+| Contract            | `npm run test:contract`      | Request paths + response shapes + depended-on fields validated against the vendored Bitbucket OpenAPI spec (ajv).       |
+| Live e2e (opt-in)   | `BITBUCKET_E2E=1 … npm test` | Hits the real Bitbucket API; skipped by default.                                                                        |
+| Security regression | (in `npm test`)              | Token never appears in any serialized error/log; the `Secret` wrapper redacts.                                          |
 
-```bash
-npm test
-```
-
-### Integration Tests
-
-Set up test environment variables and run:
-
-```bash
-npm run test:integration
-```
+Refresh the vendored spec with `npm run refresh-spec --workspace bitbucket-core`
+(`packages/bitbucket-core/contract/bitbucket-openapi.json`).
 
 ## Documentation
 
-- [Design Document](./docs/ai/DESIGN.md) - Detailed architecture and design decisions
-- [Implementation Plan](./docs/ai/IMPLEMENTATION_PLAN.md) - Development roadmap and task breakdown
-- [Bitbucket REST API](https://developer.atlassian.com/cloud/bitbucket/rest/) - Official API documentation
-- [Model Context Protocol](https://modelcontextprotocol.io/) - MCP specification
-
-## MCP Tools Reference
-
-### Pull Request Tools
-
-#### `bitbucket_list_pull_requests`
-
-List pull requests for a repository.
-
-**Parameters:**
-
-- `workspace` (string, required): Bitbucket workspace ID
-- `repo_slug` (string, required): Repository slug
-- `state` (string, optional): Filter by state (OPEN, MERGED, DECLINED)
-
-#### `bitbucket_get_pull_request`
-
-Get details of a specific pull request.
-
-**Parameters:**
-
-- `workspace` (string, required): Bitbucket workspace ID
-- `repo_slug` (string, required): Repository slug
-- `pr_id` (number, required): Pull request ID
-
-#### `bitbucket_get_pr_commits`
-
-Get commits in a pull request.
-
-**Parameters:**
-
-- `workspace` (string, required): Bitbucket workspace ID
-- `repo_slug` (string, required): Repository slug
-- `pr_id` (number, required): Pull request ID
-
-#### `bitbucket_get_pr_diff`
-
-Get diff for a pull request.
-
-**Parameters:**
-
-- `workspace` (string, required): Bitbucket workspace ID
-- `repo_slug` (string, required): Repository slug
-- `pr_id` (number, required): Pull request ID
-
-### Comment Tools
-
-#### `bitbucket_list_pr_comments`
-
-List all comments on a pull request.
-
-**Parameters:**
-
-- `workspace` (string, required): Bitbucket workspace ID
-- `repo_slug` (string, required): Repository slug
-- `pr_id` (number, required): Pull request ID
-
-#### `bitbucket_create_comment`
-
-Create a new comment on a pull request.
-
-**Parameters:**
-
-- `workspace` (string, required): Bitbucket workspace ID
-- `repo_slug` (string, required): Repository slug
-- `pr_id` (number, required): Pull request ID
-- `content` (string, required): Comment content (markdown supported)
-
-### Task Tools
-
-#### `bitbucket_list_pr_tasks`
-
-List all tasks on a pull request.
-
-**Parameters:**
-
-- `workspace` (string, required): Bitbucket workspace ID
-- `repo_slug` (string, required): Repository slug
-- `pr_id` (number, required): Pull request ID
-
-#### `bitbucket_update_task`
-
-Update a task's state.
-
-**Parameters:**
-
-- `workspace` (string, required): Bitbucket workspace ID
-- `repo_slug` (string, required): Repository slug
-- `pr_id` (number, required): Pull request ID
-- `task_id` (number, required): Task ID
-- `state` (string, required): New state (RESOLVED, UNRESOLVED)
-
-### Branch Tools
-
-#### `bitbucket_list_branches`
-
-List repository branches.
-
-**Parameters:**
-
-- `workspace` (string, required): Bitbucket workspace ID
-- `repo_slug` (string, required): Repository slug
-
-#### `bitbucket_get_branch`
-
-Get details of a specific branch.
-
-**Parameters:**
-
-- `workspace` (string, required): Bitbucket workspace ID
-- `repo_slug` (string, required): Repository slug
-- `branch_name` (string, required): Branch name
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
+- [Design Document](./ai/DESIGN.md) — architecture and design decisions (partly historical)
+- [Bitbucket REST API](https://developer.atlassian.com/cloud/bitbucket/rest/) — official API docs
+- [Model Context Protocol](https://modelcontextprotocol.io/) — MCP specification
 
 ## License
 
 MIT
-
-## Support
-
-For issues and questions:
-
-- GitHub Issues: [Project Issues](https://github.com/your-repo/issues)
-- Bitbucket API Docs: https://developer.atlassian.com/cloud/bitbucket/rest/
-- MCP Documentation: https://modelcontextprotocol.io/
-
-## Acknowledgments
-
-- Built with the [Model Context Protocol SDK](https://github.com/modelcontextprotocol/typescript-sdk)
-- Powered by [Bitbucket Cloud REST API 2.0](https://developer.atlassian.com/cloud/bitbucket/rest/)
