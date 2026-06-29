@@ -1,4 +1,4 @@
-import { redactSecrets } from 'bitbucket-api';
+import { redactSecrets } from '@bobmaertz/bitbucket-api';
 import type { LogLevel } from './config.js';
 
 const ORDER: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };

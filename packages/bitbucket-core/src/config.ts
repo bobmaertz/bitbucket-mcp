@@ -1,4 +1,4 @@
-import type { AuthConfig } from 'bitbucket-api';
+import type { AuthConfig } from '@bobmaertz/bitbucket-api';
 
 /**
  * Logging verbosity levels.

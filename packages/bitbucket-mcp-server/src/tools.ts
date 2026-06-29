@@ -7,7 +7,7 @@
  */
 
 import type { Tool, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { BitbucketAPI } from 'bitbucket-api';
+import type { BitbucketAPI } from '@bobmaertz/bitbucket-api';
 import {
   resolveTarget,
   listPullRequests,
@@ -30,8 +30,8 @@ import {
   type Logger,
   type TargetDefaults,
   type PipelineStatus,
-} from 'bitbucket-core';
-import type { WorkspaceRole } from 'bitbucket-api';
+} from '@bobmaertz/bitbucket-core';
+import type { WorkspaceRole } from '@bobmaertz/bitbucket-api';
 
 export interface ToolContext {
   api: BitbucketAPI;

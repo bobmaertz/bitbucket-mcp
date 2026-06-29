@@ -11,7 +11,7 @@ import type {
   PipelineSchedule,
   PipelineTarget,
   PipelineVariable,
-} from 'bitbucket-api';
+} from '@bobmaertz/bitbucket-api';
 
 /**
  * Token-sparse presenters.

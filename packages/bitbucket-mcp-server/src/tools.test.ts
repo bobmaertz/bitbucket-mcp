@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { BitbucketAPI } from 'bitbucket-api';
-import { createLogger } from 'bitbucket-core';
+import type { BitbucketAPI } from '@bobmaertz/bitbucket-api';
+import { createLogger } from '@bobmaertz/bitbucket-core';
 import { readOnlyTools, handlers, type ToolContext } from './tools.js';
 
 function textOf(result: { content: { type: string; text?: string }[] }): string {

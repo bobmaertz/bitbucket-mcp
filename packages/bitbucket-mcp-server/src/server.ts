@@ -11,7 +11,7 @@ import {
   ListToolsRequestSchema,
   type CallToolResult,
 } from '@modelcontextprotocol/sdk/types.js';
-import { createApi, createLogger, type CoreConfig } from 'bitbucket-core';
+import { createApi, createLogger, type CoreConfig } from '@bobmaertz/bitbucket-core';
 import { readOnlyTools, handlers, type ToolContext } from './tools.js';
 
 const require = createRequire(import.meta.url);

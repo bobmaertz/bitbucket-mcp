@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { BitbucketAPI } from 'bitbucket-api';
+import { BitbucketAPI } from '@bobmaertz/bitbucket-api';
 import { listPullRequests, getPullRequestDiff, listBranches } from './operations.js';
 
 /**

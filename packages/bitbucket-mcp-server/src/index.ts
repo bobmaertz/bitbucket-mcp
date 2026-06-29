@@ -4,7 +4,7 @@
  * Bitbucket MCP Server — entry point.
  */
 
-import { loadConfig, validateConfig, createLogger, publicConfig } from 'bitbucket-core';
+import { loadConfig, validateConfig, createLogger, publicConfig } from '@bobmaertz/bitbucket-core';
 import { createServer, startServer } from './server.js';
 
 async function main(): Promise<void> {

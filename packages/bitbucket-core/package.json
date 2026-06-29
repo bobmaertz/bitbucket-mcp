@@ -1,5 +1,5 @@
 {
-  "name": "bitbucket-core",
+  "name": "@bobmaertz/bitbucket-core",
   "version": "0.0.1",
   "description": "Shared core (config, logging, presenters, operations) for the Bitbucket MCP server and CLI",
   "type": "module",
@@ -27,7 +27,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "bitbucket-api": "file:../bitbucket-api"
+    "@bobmaertz/bitbucket-api": "file:../bitbucket-api"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

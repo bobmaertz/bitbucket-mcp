@@ -16,7 +16,7 @@ import type {
   Pipeline,
   PipelineStep,
   PipelineSchedule,
-} from 'bitbucket-api';
+} from '@bobmaertz/bitbucket-api';
 
 describe('compact', () => {
   it('drops null/undefined/empty but keeps false and 0', () => {

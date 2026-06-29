@@ -1,5 +1,5 @@
-import { BitbucketAPI, NotFoundError } from 'bitbucket-api';
-import type { PaginatedResponse } from 'bitbucket-api';
+import { BitbucketAPI, NotFoundError } from '@bobmaertz/bitbucket-api';
+import type { PaginatedResponse } from '@bobmaertz/bitbucket-api';
 import type { CoreConfig } from './config.js';
 import {
   presentPullRequest,
@@ -14,7 +14,7 @@ import {
   presentSchedule,
   presentRepository,
 } from './presenters.js';
-import type { WorkspaceRole } from 'bitbucket-api';
+import type { WorkspaceRole } from '@bobmaertz/bitbucket-api';
 
 /**
  * A single token-sparse page of results. We return `has_more` + `page`
