@@ -23,7 +23,12 @@ describe('PipelinesResource', () => {
     });
 
     it('appends paging, q, and sort', async () => {
-      await resource.list('ws', 'repo', { page: 2, pagelen: 10, q: 'state.name="FAILED"', sort: '-created_on' });
+      await resource.list('ws', 'repo', {
+        page: 2,
+        pagelen: 10,
+        q: 'state.name="FAILED"',
+        sort: '-created_on',
+      });
       const [path] = (mockClient.get as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(path).toContain('/repositories/ws/repo/pipelines?');
       expect(path).toContain('page=2');
@@ -67,7 +72,9 @@ describe('PipelinesResource', () => {
   describe('listSchedules', () => {
     it('targets the pipelines_config schedules path', async () => {
       await resource.listSchedules('ws', 'repo');
-      expect(mockClient.get).toHaveBeenCalledWith('/repositories/ws/repo/pipelines_config/schedules');
+      expect(mockClient.get).toHaveBeenCalledWith(
+        '/repositories/ws/repo/pipelines_config/schedules'
+      );
     });
   });
 });

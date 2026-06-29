@@ -246,7 +246,7 @@ export const readOnlyTools: Tool[] = [
   {
     name: 'bitbucket_get_step_log',
     description:
-      'Get a step\'s debug log. Tails the last `tail` lines by default (logs are large); supports server-side `grep` and a `max_bytes` cap. Reports truncation.',
+      "Get a step's debug log. Tails the last `tail` lines by default (logs are large); supports server-side `grep` and a `max_bytes` cap. Reports truncation.",
     inputSchema: schema(
       {
         ...workspaceRepo,
@@ -264,7 +264,7 @@ export const readOnlyTools: Tool[] = [
   },
   {
     name: 'bitbucket_list_schedules',
-    description: 'List the repository\'s configured pipeline schedules (cron patterns and targets).',
+    description: "List the repository's configured pipeline schedules (cron patterns and targets).",
     inputSchema: schema({ ...workspaceRepo, ...paging }),
   },
 ];

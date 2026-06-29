@@ -220,7 +220,11 @@ describe('presentPipelineStep', () => {
     const step = {
       uuid: '{s}',
       name: 'Build',
-      state: { type: 'pipeline_step_state_completed', name: 'COMPLETED', result: { name: 'SUCCESSFUL' } },
+      state: {
+        type: 'pipeline_step_state_completed',
+        name: 'COMPLETED',
+        result: { name: 'SUCCESSFUL' },
+      },
       started_on: '2026-01-01T00:00:00Z',
       completed_on: '2026-01-01T00:00:30Z',
     } as unknown as PipelineStep;

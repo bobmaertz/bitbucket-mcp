@@ -302,7 +302,12 @@ export async function getStepLog(
 ): Promise<StepLog> {
   let raw: string;
   try {
-    raw = await api.pipelines.getStepLog(params.workspace, params.repo, params.pipeline, params.step);
+    raw = await api.pipelines.getStepLog(
+      params.workspace,
+      params.repo,
+      params.pipeline,
+      params.step
+    );
   } catch (error) {
     if (error instanceof NotFoundError) {
       return { text: '', total_bytes: 0, truncated: false, returned_lines: 0 };
