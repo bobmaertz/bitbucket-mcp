@@ -30,7 +30,7 @@ export function createServer(config: CoreConfig): Server {
   const logger = createLogger(config.logLevel);
   const context: ToolContext = {
     api: createApi(config),
-    defaults: { workspace: config.workspace, defaultRepo: config.defaultRepo },
+    defaults: { workspace: config.workspace },
     logger,
   };
 

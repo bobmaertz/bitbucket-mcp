@@ -14,6 +14,7 @@ describe('operations (HTTP integration)', () => {
   let baseURL: string;
   let prHits = 0;
   let lastAuthHeader: string | undefined;
+  let lastBranchesUrl: string | undefined;
 
   beforeAll(async () => {
     server = http.createServer((req, res) => {
@@ -65,6 +66,7 @@ describe('operations (HTTP integration)', () => {
       }
 
       if (url.startsWith('/repositories/acme/repo/refs/branches')) {
+        lastBranchesUrl = url;
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(
           JSON.stringify({
@@ -148,6 +150,12 @@ describe('operations (HTTP integration)', () => {
   it('shortens branch hashes', async () => {
     const page = await listBranches(api(), { workspace: 'acme', repo: 'repo' });
     expect(page.items[0]).toMatchObject({ name: 'main', target_hash: '0123456789ab' });
+  });
+
+  it('clamps an oversized pagelen to the 100 max before hitting the API', async () => {
+    await listBranches(api(), { workspace: 'acme', repo: 'repo', pagelen: 9999 });
+    expect(lastBranchesUrl).toContain('pagelen=100');
+    expect(lastBranchesUrl).not.toContain('9999');
   });
 });
 

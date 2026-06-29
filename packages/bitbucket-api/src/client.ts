@@ -137,7 +137,10 @@ export class BitbucketClient {
     }
 
     const { status, data } = error.response;
-    const message = this.extractErrorMessage(data);
+    // An empty/whitespace body must not produce an empty error message: coerce
+    // to `undefined` so the typed errors' default messages apply (default params
+    // only kick in for `undefined`, not `''`).
+    const message = this.extractErrorMessage(data).trim() || undefined;
 
     switch (status) {
       case 401:
@@ -151,7 +154,7 @@ export class BitbucketClient {
         return new RateLimitError(message, retryAfter ? Math.round(retryAfter / 1000) : undefined);
       }
       default:
-        return new BitbucketError(message || 'API request failed', status);
+        return new BitbucketError(message || `API request failed (HTTP ${status})`, status);
     }
   }
 

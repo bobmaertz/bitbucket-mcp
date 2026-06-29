@@ -59,9 +59,21 @@ export interface Repository {
   has_wiki: boolean;
   fork_policy: 'allow_forks' | 'no_public_forks' | 'no_forks';
   project?: Project;
-  mainbranch?: BranchInfo;
+  mainbranch?: { name: string; type?: 'branch' };
   links: Links;
   type: 'repository';
+}
+
+/**
+ * Workspace information (`GET /workspaces`).
+ */
+export interface Workspace {
+  slug: string;
+  name: string;
+  uuid: string;
+  is_private?: boolean;
+  links: Links;
+  type: 'workspace';
 }
 
 /**

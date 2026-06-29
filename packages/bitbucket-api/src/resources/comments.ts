@@ -6,6 +6,7 @@ import type {
   PaginatedResponse,
   ListOptions,
 } from '../types/index.js';
+import { seg } from '../utils/path.js';
 
 /**
  * Comments resource API
@@ -29,7 +30,7 @@ export class CommentsResource {
     if (options?.q) params.append('q', options.q);
     if (options?.sort) params.append('sort', options.sort);
 
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments${
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/comments${
       params.toString() ? `?${params.toString()}` : ''
     }`;
 
@@ -45,7 +46,7 @@ export class CommentsResource {
     prId: number,
     commentId: number
   ): Promise<Comment> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments/${commentId}`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/comments/${commentId}`;
     return this.client.get<Comment>(path);
   }
 
@@ -58,7 +59,7 @@ export class CommentsResource {
     prId: number,
     params: CreateCommentParams
   ): Promise<Comment> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/comments`;
     return this.client.post<Comment>(path, params);
   }
 
@@ -72,7 +73,7 @@ export class CommentsResource {
     commentId: number,
     params: UpdateCommentParams
   ): Promise<Comment> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments/${commentId}`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/comments/${commentId}`;
     return this.client.put<Comment>(path, params);
   }
 
@@ -85,7 +86,7 @@ export class CommentsResource {
     prId: number,
     commentId: number
   ): Promise<void> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments/${commentId}`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/comments/${commentId}`;
     await this.client.delete<void>(path);
   }
 }

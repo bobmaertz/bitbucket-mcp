@@ -49,7 +49,6 @@ Create an API token (with scopes) at
 | `BITBUCKET_WORKSPACE`                           | yes             | Workspace ID.                                                           |
 | `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN`       | yes (canonical) | Basic auth `email:token`; token minted with scopes at id.atlassian.com. |
 | `BITBUCKET_USERNAME` + `BITBUCKET_APP_PASSWORD` | fallback        | Deprecated; emits a warning; API-token pair wins if both set.           |
-| `BITBUCKET_DEFAULT_REPO`                        | no              | Default repo when a tool omits `repo`.                                  |
 | `LOG_LEVEL`                                     | no              | `debug`/`info`/`warn`/`error` (default `info`).                         |
 | `BITBUCKET_ALLOW_WRITES`                        | no              | Gates future write tools (default off).                                 |
 
@@ -68,8 +67,7 @@ Add to your `claude_desktop_config.json`:
       "env": {
         "BITBUCKET_WORKSPACE": "your-workspace",
         "BITBUCKET_EMAIL": "you@example.com",
-        "BITBUCKET_API_TOKEN": "your-api-token",
-        "BITBUCKET_DEFAULT_REPO": "your-repo"
+        "BITBUCKET_API_TOKEN": "your-api-token"
       }
     }
   }
@@ -78,31 +76,38 @@ Add to your `claude_desktop_config.json`:
 
 ## MCP Tools (read-only)
 
-`workspace`/`repo` default to `BITBUCKET_WORKSPACE` / `BITBUCKET_DEFAULT_REPO`. Output is compact
-JSON with lean fields only (no rendered HTML, short commit hashes, null/empty omitted), a single
-page plus a `has_more`/`page` cursor (no auto-pagination). Write operations
-(merge/approve/decline/comment/task/branch creation) are **not** exposed.
+`workspace` defaults to `BITBUCKET_WORKSPACE`; `repo` must be passed explicitly to repo-scoped
+tools. Output is compact JSON with lean fields only (no rendered HTML, short commit hashes,
+null/empty omitted), a single page plus a `has_more`/`page` cursor (no auto-pagination). Write
+operations (merge/approve/decline/comment/task/branch creation) are **not** exposed.
 
-| Tool                           | Inputs                                                                        | Returns                                                                                                                     |
-| ------------------------------ | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `bitbucket_list_pull_requests` | `workspace?`, `repo?`, `state?`(OPEN), `query?`, `sort?`, `page?`, `pagelen?` | `{items[{id,title,state,author,source_branch,dest_branch,comment_count,task_count,updated_on,url}], page, has_more, total}` |
-| `bitbucket_get_pull_request`   | `workspace?`, `repo?`, `id*`                                                  | PR + description, reviewers, participants/approvals                                                                         |
-| `bitbucket_get_pr_commits`     | `workspace?`, `repo?`, `id*`, `page?`                                         | `{items[{hash,message,author,date}], …}`                                                                                    |
-| `bitbucket_get_pr_diff`        | `workspace?`, `repo?`, `id*`, `max_lines?`(200)                               | `{diff, truncated, total_lines, files_changed}`                                                                             |
-| `bitbucket_list_pr_comments`   | `workspace?`, `repo?`, `id*`, `page?`                                         | `{items[{id,author,content,created_on,inline,parent_id,deleted}], …}`                                                       |
-| `bitbucket_get_comment`        | `workspace?`, `repo?`, `pr_id*`, `comment_id*`                                | single comment                                                                                                              |
-| `bitbucket_list_pr_tasks`      | `workspace?`, `repo?`, `id*`, `page?`                                         | `{items[{id,content,state,creator,created_on}], …}`                                                                         |
-| `bitbucket_get_task`           | `workspace?`, `repo?`, `pr_id*`, `task_id*`                                   | single task                                                                                                                 |
-| `bitbucket_list_branches`      | `workspace?`, `repo?`, `query?`, `sort?`, `page?`                             | `{items[{name,target_hash,target_date,author,message}], …}`                                                                 |
-| `bitbucket_get_branch`         | `workspace?`, `repo?`, `name*`                                                | single branch                                                                                                               |
+| Tool                           | Inputs                                                                                   | Returns                                                                                                                                                    |
+| ------------------------------ | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bitbucket_list_repositories`  | `workspace?`, `role?`(owner/collaborator/member), `query?`, `sort?`, `page?`, `pagelen?` | `{repos[{full_name,slug,workspace,is_private,description,language,project,mainbranch,updated_on,url}], page, has_more, total}` (`repos` is `[]` when none) |
+| `bitbucket_get_repository`     | `workspace?`, `repo*`                                                                    | single repository                                                                                                                                          |
+| `bitbucket_list_pull_requests` | `workspace?`, `repo*`, `state?`(OPEN), `query?`, `sort?`, `page?`, `pagelen?`            | `{items[{id,title,state,author,source_branch,dest_branch,comment_count,task_count,updated_on,url}], page, has_more, total}`                                |
+| `bitbucket_get_pull_request`   | `workspace?`, `repo*`, `id*`                                                             | PR + description, reviewers, participants/approvals                                                                                                        |
+| `bitbucket_get_pr_commits`     | `workspace?`, `repo*`, `id*`, `page?`                                                    | `{items[{hash,message,author,date}], …}`                                                                                                                   |
+| `bitbucket_get_pr_diff`        | `workspace?`, `repo*`, `id*`, `max_lines?`(200)                                          | `{diff, truncated, total_lines, files_changed}`                                                                                                            |
+| `bitbucket_list_pr_comments`   | `workspace?`, `repo*`, `id*`, `page?`                                                    | `{items[{id,author,content,created_on,inline,parent_id,deleted}], …}`                                                                                      |
+| `bitbucket_get_comment`        | `workspace?`, `repo*`, `pr_id*`, `comment_id*`                                           | single comment                                                                                                                                             |
+| `bitbucket_list_pr_tasks`      | `workspace?`, `repo*`, `id*`, `page?`                                                    | `{items[{id,content,state,creator,created_on}], …}`                                                                                                        |
+| `bitbucket_get_task`           | `workspace?`, `repo*`, `pr_id*`, `task_id*`                                              | single task                                                                                                                                                |
+| `bitbucket_list_branches`      | `workspace?`, `repo*`, `query?`, `sort?`, `page?`                                        | `{items[{name,target_hash,target_date,author,message}], …}`                                                                                                |
+| `bitbucket_get_branch`         | `workspace?`, `repo*`, `name*`                                                           | single branch                                                                                                                                              |
 
-(`*` = required.)
+(`*` = required. `bitbucket_list_repositories` needs neither `workspace` nor `repo`: omit
+`workspace` to enumerate the workspaces you belong to — optionally filtered by membership
+`role` — and aggregate one page of repos from each. Pass `workspace` to page fully through a
+single workspace. The top-level cross-workspace `GET /repositories` listing was deprecated by
+Atlassian, so discovery goes via `GET /workspaces`.)
 
 ### Usage Examples
 
 Once configured with an MCP client like Claude Desktop, ask in natural language:
 
-- "List the open pull requests in the default repo"
+- "List all the repositories I have access to"
+- "List the open pull requests in acme/widgets"
 - "Show me the comments on pull request #42"
 - "What tasks are open on PR #15?"
 - "List the branches and their latest commits"
