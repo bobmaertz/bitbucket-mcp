@@ -9,6 +9,9 @@ import {
   presentComment,
   presentTask,
   presentBranch,
+  presentPipelineSummary,
+  presentPipelineStep,
+  presentSchedule,
   presentRepository,
 } from './presenters.js';
 
@@ -82,10 +85,13 @@ const READ_ENDPOINTS: Array<[string, string]> = [
   [`${REPO}/pullrequests/{pull_request_id}/tasks/{task_id}`, 'get'],
   [`${REPO}/refs/branches`, 'get'],
   [`${REPO}/refs/branches/{name}`, 'get'],
+  [`${REPO}/pipelines`, 'get'],
+  [`${REPO}/pipelines/{pipeline_uuid}`, 'get'],
+  [`${REPO}/pipelines/{pipeline_uuid}/steps`, 'get'],
+  [`${REPO}/pipelines/{pipeline_uuid}/steps/{step_uuid}/log`, 'get'],
+  [`${REPO}/pipelines_config/schedules`, 'get'],
 ];
 const ROADMAP_ENDPOINTS: Array<[string, string]> = [
-  [`${REPO}/pipelines`, 'get'],
-  [`${REPO}/pipelines/{pipeline_uuid}/steps`, 'get'],
   [`${REPO}/refs/tags`, 'get'],
   [`${REPO}/refs/tags`, 'post'], // cut a version (tag) — write, opt-in
 ];
@@ -136,6 +142,24 @@ describe('field-dependency contract', () => {
     ['ref', ['type', 'name', 'target', 'links']],
     ['commit', ['hash', 'date', 'message', 'author']],
     ['tag', ['name', 'target', 'message']],
+    [
+      'pipeline',
+      [
+        'build_number',
+        'uuid',
+        'state',
+        'target',
+        'trigger',
+        'creator',
+        'created_on',
+        'completed_on',
+        'build_seconds_used',
+        'variables',
+      ],
+    ],
+    ['pipeline_step', ['uuid', 'state', 'started_on', 'completed_on']],
+    ['pipeline_schedule', ['uuid', 'enabled', 'cron_pattern', 'target']],
+    ['pipeline_variable', ['key', 'value', 'secured']],
     [
       'repository',
       [
@@ -255,6 +279,72 @@ describe('response-shape contract', () => {
   it('a task validates against the spec', () => check('task', task));
 
   it('a branch validates against the spec', () => check('branch', branch));
+
+  const pipeline = {
+    type: 'pipeline',
+    uuid: '{p}',
+    build_number: 12,
+    state: {
+      type: 'pipeline_state_completed',
+      name: 'COMPLETED',
+      result: { type: 'pipeline_state_completed_failed', name: 'FAILED' },
+    },
+    target: { type: 'pipeline_ref_target', ref_type: 'branch', ref_name: 'main' },
+    trigger: { type: 'pipeline_trigger_push' },
+    created_on: '2026-01-01T00:00:00Z',
+    completed_on: '2026-01-01T00:01:00Z',
+    build_seconds_used: 60,
+  };
+
+  const pipelineStep = {
+    type: 'pipeline_step',
+    uuid: '{s}',
+    state: {
+      type: 'pipeline_step_state_completed',
+      name: 'COMPLETED',
+      result: { type: 'pipeline_step_state_completed_successful', name: 'SUCCESSFUL' },
+    },
+    started_on: '2026-01-01T00:00:00Z',
+    completed_on: '2026-01-01T00:00:30Z',
+  };
+
+  const schedule = {
+    type: 'pipeline_schedule',
+    uuid: '{sc}',
+    enabled: true,
+    cron_pattern: '0 0 * * *',
+    target: { type: 'pipeline_ref_target', ref_type: 'branch', ref_name: 'main' },
+  };
+
+  it('a pipeline validates against the spec', () => check('pipeline', pipeline));
+
+  it('a paginated pipeline page validates against the spec', () =>
+    check('paginated_pipelines', { size: 1, page: 1, pagelen: 25, values: [pipeline] }));
+
+  it('a pipeline step validates against the spec', () => check('pipeline_step', pipelineStep));
+
+  it('a pipeline schedule validates against the spec', () => check('pipeline_schedule', schedule));
+
+  it('pipeline presenters produce lean output from spec-valid payloads', () => {
+    expect(presentPipelineSummary(pipeline as never)).toMatchObject({
+      build_number: 12,
+      state: 'COMPLETED',
+      result: 'FAILED',
+      trigger_type: 'push',
+      target: { branch: 'main' },
+      duration_in_seconds: 60,
+    });
+    expect(presentPipelineStep(pipelineStep as never)).toMatchObject({
+      step_uuid: '{s}',
+      result: 'SUCCESSFUL',
+      has_log: true,
+    });
+    expect(presentSchedule(schedule as never)).toMatchObject({
+      uuid: '{sc}',
+      enabled: true,
+      cron_pattern: '0 0 * * *',
+    });
+  });
 
   it('a repository validates against the spec', () => check('repository', repository));
 

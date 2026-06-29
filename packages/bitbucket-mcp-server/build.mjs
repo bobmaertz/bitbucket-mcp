@@ -15,6 +15,7 @@ await build({
   outfile: 'dist/index.js',
   // Keep these as real imports → declared as runtime `dependencies`.
   external: ['@modelcontextprotocol/sdk', 'axios'],
-  banner: { js: '#!/usr/bin/env node' },
+  // No shebang banner: esbuild preserves the shebang from src/index.ts, and a
+  // banner would duplicate it onto line 2 (an invalid-token SyntaxError).
   logLevel: 'info',
 });

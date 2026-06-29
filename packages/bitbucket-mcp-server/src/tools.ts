@@ -20,10 +20,16 @@ import {
   getTask,
   listBranches,
   getBranch,
+  listPipelines,
+  getPipeline,
+  listPipelineSteps,
+  getStepLog,
+  listSchedules,
   listRepositories,
   getRepository,
   type Logger,
   type TargetDefaults,
+  type PipelineStatus,
 } from 'bitbucket-core';
 import type { WorkspaceRole } from 'bitbucket-api';
 
@@ -190,6 +196,77 @@ export const readOnlyTools: Tool[] = [
       ['name']
     ),
   },
+  {
+    name: 'bitbucket_list_pipelines',
+    description:
+      'List pipeline runs (newest first). Filter by branch, pull_request_id, or status. Lean summary per run with state, result, trigger type, and target.',
+    inputSchema: schema({
+      ...workspaceRepo,
+      branch: { type: 'string', description: 'Filter to runs targeting this branch' },
+      pull_request_id: { type: 'number', description: 'Filter to runs triggered for this PR' },
+      status: {
+        type: 'string',
+        enum: ['pending', 'in_progress', 'successful', 'failed', 'stopped'],
+        description: 'Filter by run status',
+      },
+      sort: { type: 'string', description: 'Sort field (default -created_on)' },
+      ...paging,
+    }),
+  },
+  {
+    name: 'bitbucket_get_pipeline',
+    description:
+      'Get one pipeline run by build number or UUID, including creator, target, variables (secured masked), and whether it was scheduled.',
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        pipeline: {
+          type: ['string', 'number'],
+          description: 'Pipeline build number or UUID',
+        },
+      },
+      ['pipeline']
+    ),
+  },
+  {
+    name: 'bitbucket_list_pipeline_steps',
+    description: 'List the steps of a pipeline run with pass/fail state and whether a log exists.',
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        pipeline: {
+          type: ['string', 'number'],
+          description: 'Pipeline build number or UUID',
+        },
+        ...paging,
+      },
+      ['pipeline']
+    ),
+  },
+  {
+    name: 'bitbucket_get_step_log',
+    description:
+      "Get a step's debug log. Tails the last `tail` lines by default (logs are large); supports server-side `grep` and a `max_bytes` cap. Reports truncation.",
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        pipeline: {
+          type: ['string', 'number'],
+          description: 'Pipeline build number or UUID',
+        },
+        step: { type: 'string', description: 'Step UUID' },
+        tail: { type: 'number', description: 'Return only the last N lines (default 500)' },
+        grep: { type: 'string', description: 'Keep only lines containing this substring' },
+        max_bytes: { type: 'number', description: 'Cap returned text to this many bytes' },
+      },
+      ['pipeline', 'step']
+    ),
+  },
+  {
+    name: 'bitbucket_list_schedules',
+    description: "List the repository's configured pipeline schedules (cron patterns and targets).",
+    inputSchema: schema({ ...workspaceRepo, ...paging }),
+  },
 ];
 
 // Handlers --------------------------------------------------------------------
@@ -208,6 +285,14 @@ function str(args: Record<string, unknown>, key: string): string {
     throw new Error(`${key} is required`);
   }
   return value;
+}
+
+/** A pipeline/step reference may arrive as a build number or a UUID string. */
+function ref(args: Record<string, unknown>, key: string): string {
+  const value = args[key];
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string' && value.length > 0) return value;
+  throw new Error(`${key} is required (build number or UUID)`);
 }
 
 function listArgs(ctx: ToolContext, args: Record<string, unknown>) {
@@ -313,5 +398,60 @@ export const handlers: Record<string, Handler> = {
   bitbucket_get_branch: async (ctx, args) => {
     const { workspace, repo } = resolveTarget(ctx.defaults, args);
     return json(await getBranch(ctx.api, { workspace, repo, name: str(args, 'name') }));
+  },
+
+  bitbucket_list_pipelines: async (ctx, args) =>
+    json(
+      await listPipelines(ctx.api, {
+        ...listArgs(ctx, args),
+        branch: args.branch as string | undefined,
+        pullRequestId: args.pull_request_id as number | undefined,
+        status: args.status as PipelineStatus | undefined,
+      })
+    ),
+
+  bitbucket_get_pipeline: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(await getPipeline(ctx.api, { workspace, repo, pipeline: ref(args, 'pipeline') }));
+  },
+
+  bitbucket_list_pipeline_steps: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await listPipelineSteps(ctx.api, {
+        workspace,
+        repo,
+        pipeline: ref(args, 'pipeline'),
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+      })
+    );
+  },
+
+  bitbucket_get_step_log: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await getStepLog(ctx.api, {
+        workspace,
+        repo,
+        pipeline: ref(args, 'pipeline'),
+        step: str(args, 'step'),
+        tail: args.tail as number | undefined,
+        grep: args.grep as string | undefined,
+        maxBytes: args.max_bytes as number | undefined,
+      })
+    );
+  },
+
+  bitbucket_list_schedules: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await listSchedules(ctx.api, {
+        workspace,
+        repo,
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+      })
+    );
   },
 };

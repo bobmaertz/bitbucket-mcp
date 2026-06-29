@@ -1,4 +1,4 @@
-import { BitbucketAPI } from 'bitbucket-api';
+import { BitbucketAPI, NotFoundError } from 'bitbucket-api';
 import type { PaginatedResponse } from 'bitbucket-api';
 import type { CoreConfig } from './config.js';
 import {
@@ -8,6 +8,10 @@ import {
   presentTask,
   presentBranch,
   presentCommit,
+  presentPipeline,
+  presentPipelineSummary,
+  presentPipelineStep,
+  presentSchedule,
   presentRepository,
 } from './presenters.js';
 import type { WorkspaceRole } from 'bitbucket-api';
@@ -206,6 +210,145 @@ export async function getBranch(
 ): Promise<Record<string, unknown>> {
   const branch = await api.branches.get(params.workspace, params.repo, params.name);
   return presentBranch(branch);
+}
+
+// Pipelines -------------------------------------------------------------------
+
+export type PipelineStatus = 'pending' | 'in_progress' | 'successful' | 'failed' | 'stopped';
+
+const DEFAULT_LOG_TAIL = 500;
+
+/**
+ * Build a Bitbucket `q=` filter from branch / PR / status. Bitbucket's query
+ * grammar is finicky; these are the field paths it documents. `pending` and
+ * `in_progress` filter the run state, while result statuses filter
+ * `state.result.name`. Multiple clauses are AND-combined.
+ */
+export function buildPipelineQuery(params: {
+  branch?: string;
+  pullRequestId?: number;
+  status?: PipelineStatus;
+}): string | undefined {
+  const clauses: string[] = [];
+  if (params.branch) clauses.push(`target.ref_name="${params.branch}"`);
+  if (params.pullRequestId !== undefined)
+    clauses.push(`target.pullrequest.id=${params.pullRequestId}`);
+  if (params.status) {
+    if (params.status === 'pending') clauses.push('state.name="PENDING"');
+    else if (params.status === 'in_progress') clauses.push('state.name="IN_PROGRESS"');
+    else clauses.push(`state.result.name="${params.status.toUpperCase()}"`);
+  }
+  return clauses.length ? clauses.join(' AND ') : undefined;
+}
+
+export async function listPipelines(
+  api: BitbucketAPI,
+  params: ListParams & { branch?: string; pullRequestId?: number; status?: PipelineStatus }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.pipelines.list(params.workspace, params.repo, {
+    page,
+    pagelen: params.pagelen ?? DEFAULT_PAGELEN,
+    q: params.query ?? buildPipelineQuery(params),
+    sort: params.sort ?? '-created_on',
+  });
+  return toPage(response, presentPipelineSummary, page);
+}
+
+export async function getPipeline(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; pipeline: string }
+): Promise<Record<string, unknown>> {
+  const pipeline = await api.pipelines.get(params.workspace, params.repo, params.pipeline);
+  return presentPipeline(pipeline);
+}
+
+export async function listPipelineSteps(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; pipeline: string; page?: number; pagelen?: number }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.pipelines.listSteps(params.workspace, params.repo, params.pipeline, {
+    page,
+    pagelen: params.pagelen ?? DEFAULT_PAGELEN,
+  });
+  return toPage(response, presentPipelineStep, page);
+}
+
+export interface StepLog {
+  text: string;
+  total_bytes: number;
+  truncated: boolean;
+  returned_lines: number;
+}
+
+/**
+ * Fetch a step's log, tailing to the last `tail` lines by default (logs are
+ * often MB+). `grep` filters to matching lines before tailing; `maxBytes` caps
+ * the returned text. In-progress steps with no log yet return empty rather than
+ * erroring.
+ */
+export async function getStepLog(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    pipeline: string;
+    step: string;
+    tail?: number;
+    grep?: string;
+    maxBytes?: number;
+  }
+): Promise<StepLog> {
+  let raw: string;
+  try {
+    raw = await api.pipelines.getStepLog(
+      params.workspace,
+      params.repo,
+      params.pipeline,
+      params.step
+    );
+  } catch (error) {
+    if (error instanceof NotFoundError) {
+      return { text: '', total_bytes: 0, truncated: false, returned_lines: 0 };
+    }
+    throw error;
+  }
+
+  const totalBytes = Buffer.byteLength(raw, 'utf8');
+  let truncated = false;
+
+  let lines = raw.split('\n');
+  if (params.grep) {
+    lines = lines.filter((line) => line.includes(params.grep!));
+  }
+
+  const tail = params.tail ?? DEFAULT_LOG_TAIL;
+  if (lines.length > tail) {
+    lines = lines.slice(-tail);
+    truncated = true;
+  }
+
+  let text = lines.join('\n');
+  if (params.maxBytes && Buffer.byteLength(text, 'utf8') > params.maxBytes) {
+    // Trim from the front so the most recent output is retained.
+    text = Buffer.from(text, 'utf8').subarray(-params.maxBytes).toString('utf8');
+    truncated = true;
+  }
+
+  return { text, total_bytes: totalBytes, truncated, returned_lines: lines.length };
+}
+
+export async function listSchedules(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; page?: number; pagelen?: number }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.pipelines.listSchedules(params.workspace, params.repo, {
+    page,
+    pagelen: params.pagelen ?? DEFAULT_PAGELEN,
+  });
+  return toPage(response, presentSchedule, page);
 }
 
 /** A page of repositories. Uses an explicit `repos` key (always present, `[]`
