@@ -6,6 +6,7 @@ import type {
   PaginatedResponse,
   ListOptions,
 } from '../types/index.js';
+import { seg } from '../utils/path.js';
 
 /**
  * Tasks resource API
@@ -31,7 +32,7 @@ export class TasksResource {
 
     // Tasks are accessed through comments endpoint with filtering
     // In practice, Bitbucket may have a dedicated tasks endpoint or tasks are part of comments
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/tasks${
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/tasks${
       params.toString() ? `?${params.toString()}` : ''
     }`;
 
@@ -42,7 +43,7 @@ export class TasksResource {
    * Get a specific task
    */
   async get(workspace: string, repoSlug: string, prId: number, taskId: number): Promise<Task> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/tasks/${taskId}`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/tasks/${taskId}`;
     return this.client.get<Task>(path);
   }
 
@@ -55,7 +56,7 @@ export class TasksResource {
     prId: number,
     params: CreateTaskParams
   ): Promise<Task> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/tasks`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/tasks`;
     return this.client.post<Task>(path, params);
   }
 
@@ -69,7 +70,7 @@ export class TasksResource {
     taskId: number,
     params: UpdateTaskParams
   ): Promise<Task> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/tasks/${taskId}`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/tasks/${taskId}`;
     return this.client.put<Task>(path, params);
   }
 
@@ -77,7 +78,7 @@ export class TasksResource {
    * Delete a task
    */
   async delete(workspace: string, repoSlug: string, prId: number, taskId: number): Promise<void> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/tasks/${taskId}`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/tasks/${taskId}`;
     await this.client.delete<void>(path);
   }
 }

@@ -12,6 +12,7 @@ import {
   presentPipelineSummary,
   presentPipelineStep,
   presentSchedule,
+  presentRepository,
 } from './presenters.js';
 
 /**
@@ -71,6 +72,9 @@ function collectProps(name: string, seen = new Set<string>()): Set<string> {
 // deferred roadmap). Path keys must match the spec's templated paths verbatim.
 const REPO = '/repositories/{workspace}/{repo_slug}';
 const READ_ENDPOINTS: Array<[string, string]> = [
+  ['/workspaces', 'get'],
+  ['/repositories/{workspace}', 'get'],
+  [REPO, 'get'],
   [`${REPO}/pullrequests`, 'get'],
   [`${REPO}/pullrequests/{pull_request_id}`, 'get'],
   [`${REPO}/pullrequests/{pull_request_id}/commits`, 'get'],
@@ -156,6 +160,21 @@ describe('field-dependency contract', () => {
     ['pipeline_step', ['uuid', 'state', 'started_on', 'completed_on']],
     ['pipeline_schedule', ['uuid', 'enabled', 'cron_pattern', 'target']],
     ['pipeline_variable', ['key', 'value', 'secured']],
+    [
+      'repository',
+      [
+        'full_name',
+        'is_private',
+        'description',
+        'language',
+        'project',
+        'mainbranch',
+        'updated_on',
+        'links',
+      ],
+    ],
+    // We only read `slug` off each workspace to enumerate per-workspace repos.
+    ['workspace', ['slug', 'name', 'uuid', 'links']],
   ];
 
   it.each(expectations)('%s defines the fields we depend on', (definition, fields) => {
@@ -221,6 +240,26 @@ describe('response-shape contract', () => {
       author: { type: 'author', raw: 'Jo <jo@example.com>' },
     },
     links: { self: { href: 'https://api/x' } },
+  };
+
+  const repository = {
+    type: 'repository',
+    name: 'repo',
+    full_name: 'acme/repo',
+    slug: 'repo',
+    uuid: '{r}',
+    is_private: true,
+    created_on: '2026-01-01T00:00:00Z',
+    updated_on: '2026-01-02T00:00:00Z',
+    size: 1024,
+    language: 'typescript',
+    description: 'A repo',
+    project: { type: 'project', key: 'PROJ', name: 'Project', uuid: '{p}', links: {} },
+    mainbranch: { type: 'branch', name: 'main' },
+    links: {
+      self: { href: 'https://api/x' },
+      html: { href: 'https://bitbucket.org/acme/repo' },
+    },
   };
 
   function check(definition: string, value: unknown): void {
@@ -307,6 +346,11 @@ describe('response-shape contract', () => {
     });
   });
 
+  it('a repository validates against the spec', () => check('repository', repository));
+
+  it('a paginated repository page validates against the spec', () =>
+    check('paginated_repositories', { size: 1, page: 1, pagelen: 25, values: [repository] }));
+
   // Spec-valid payloads flow through our presenters to the expected lean shape:
   // this ties the published contract to our actual output.
   it('presenters produce lean output from spec-valid payloads', () => {
@@ -327,6 +371,15 @@ describe('response-shape contract', () => {
     expect(presentBranch(branch as never)).toMatchObject({
       name: 'main',
       target_hash: '0123456789ab',
+    });
+    expect(presentRepository(repository as never)).toMatchObject({
+      full_name: 'acme/repo',
+      slug: 'repo',
+      workspace: 'acme',
+      is_private: true,
+      project: 'PROJ',
+      mainbranch: 'main',
+      url: 'https://bitbucket.org/acme/repo',
     });
   });
 });

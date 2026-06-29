@@ -23,6 +23,7 @@ describe('read-only tool surface', () => {
         'bitbucket_get_pr_commits',
         'bitbucket_get_pr_diff',
         'bitbucket_get_pull_request',
+        'bitbucket_get_repository',
         'bitbucket_get_step_log',
         'bitbucket_get_task',
         'bitbucket_list_branches',
@@ -31,6 +32,7 @@ describe('read-only tool surface', () => {
         'bitbucket_list_pr_comments',
         'bitbucket_list_pr_tasks',
         'bitbucket_list_pull_requests',
+        'bitbucket_list_repositories',
         'bitbucket_list_schedules',
       ].sort()
     );
@@ -51,12 +53,12 @@ describe('handlers', () => {
     const api = { pullRequests: { list: listImpl } } as unknown as BitbucketAPI;
     return {
       api,
-      defaults: { workspace: 'acme', defaultRepo: 'repo' },
+      defaults: { workspace: 'acme' },
       logger: createLogger('error'),
     };
   }
 
-  it('resolves default repo and returns compact JSON', async () => {
+  it('resolves the target repo and returns compact JSON', async () => {
     const list = vi.fn().mockResolvedValue({
       size: 1,
       next: undefined,
@@ -74,13 +76,60 @@ describe('handlers', () => {
       ],
     });
 
-    const result = await handlers.bitbucket_list_pull_requests(context(list), {});
+    const result = await handlers.bitbucket_list_pull_requests(context(list), { repo: 'repo' });
     expect(list).toHaveBeenCalledWith('acme', 'repo', expect.objectContaining({ state: 'OPEN' }));
 
     const text = textOf(result);
     expect(text).not.toContain('\n'); // compact, not pretty-printed
     const parsed = JSON.parse(text);
     expect(parsed.items[0]).toMatchObject({ id: 1, source_branch: 'f', dest_branch: 'main' });
+  });
+
+  it('enumerates workspaces and aggregates repos when no workspace is given', async () => {
+    const reposList = vi.fn().mockResolvedValue({
+      size: 1,
+      next: undefined,
+      values: [{ full_name: 'acme/widgets', is_private: true, links: {} }],
+    });
+    const workspacesList = vi.fn().mockResolvedValue({
+      size: 1,
+      next: undefined,
+      values: [{ slug: 'acme', type: 'workspace', links: {} }],
+    });
+    const ctx = {
+      api: {
+        repositories: { list: reposList },
+        workspaces: { list: workspacesList },
+      } as unknown as BitbucketAPI,
+      defaults: { workspace: 'acme' },
+      logger: createLogger('error'),
+    };
+
+    const result = await handlers.bitbucket_list_repositories(ctx, {});
+    expect(workspacesList).toHaveBeenCalledTimes(1);
+    expect(reposList).toHaveBeenCalledWith('acme', expect.any(Object));
+
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.repos[0]).toMatchObject({
+      full_name: 'acme/widgets',
+      slug: 'widgets',
+      workspace: 'acme',
+    });
+  });
+
+  it('returns an empty repos array when a scoped workspace has no repositories', async () => {
+    const reposList = vi.fn().mockResolvedValue({ size: 0, next: undefined, values: [] });
+    const ctx = {
+      api: { repositories: { list: reposList } } as unknown as BitbucketAPI,
+      defaults: { workspace: 'acme' },
+      logger: createLogger('error'),
+    };
+
+    const result = await handlers.bitbucket_list_repositories(ctx, { workspace: 'empty-ws' });
+    expect(reposList).toHaveBeenCalledWith('empty-ws', expect.any(Object));
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.repos).toEqual([]);
+    expect(result.isError).toBeUndefined();
   });
 
   it('errors clearly when no repo can be resolved', async () => {
@@ -97,7 +146,7 @@ describe('pipeline handlers', () => {
   function ctxWith(pipelines: Record<string, unknown>): ToolContext {
     return {
       api: { pipelines } as unknown as BitbucketAPI,
-      defaults: { workspace: 'acme', defaultRepo: 'repo' },
+      defaults: { workspace: 'acme' },
       logger: createLogger('error'),
     };
   }
@@ -118,7 +167,11 @@ describe('pipeline handlers', () => {
     });
     const ctx = ctxWith({ list });
 
-    const result = await handlers.bitbucket_list_pipelines(ctx, { branch: 'main', status: 'failed' });
+    const result = await handlers.bitbucket_list_pipelines(ctx, {
+      repo: 'repo',
+      branch: 'main',
+      status: 'failed',
+    });
 
     expect(list).toHaveBeenCalledWith(
       'acme',
@@ -140,7 +193,7 @@ describe('pipeline handlers', () => {
     const get = vi.fn().mockResolvedValue({ build_number: 42, uuid: '{p}', variables: [] });
     const ctx = ctxWith({ get });
 
-    await handlers.bitbucket_get_pipeline(ctx, { pipeline: 42 });
+    await handlers.bitbucket_get_pipeline(ctx, { repo: 'repo', pipeline: 42 });
     expect(get).toHaveBeenCalledWith('acme', 'repo', '42');
   });
 
@@ -150,6 +203,7 @@ describe('pipeline handlers', () => {
     const ctx = ctxWith({ getStepLog });
 
     const result = await handlers.bitbucket_get_step_log(ctx, {
+      repo: 'repo',
       pipeline: '7',
       step: '{s}',
       grep: 'ERROR',
@@ -165,6 +219,8 @@ describe('pipeline handlers', () => {
 
   it('requires both pipeline and step for step logs', async () => {
     const ctx = ctxWith({ getStepLog: vi.fn() });
-    await expect(handlers.bitbucket_get_step_log(ctx, { pipeline: '7' })).rejects.toThrow(/step/);
+    await expect(
+      handlers.bitbucket_get_step_log(ctx, { repo: 'repo', pipeline: '7' })
+    ).rejects.toThrow(/step/);
   });
 });

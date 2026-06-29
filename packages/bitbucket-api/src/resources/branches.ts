@@ -1,5 +1,6 @@
 import type { BitbucketClient } from '../client.js';
 import type { Branch, CreateBranchParams, PaginatedResponse, ListOptions } from '../types/index.js';
+import { seg } from '../utils/path.js';
 
 /**
  * Branches resource API
@@ -22,7 +23,7 @@ export class BranchesResource {
     if (options?.q) params.append('q', options.q);
     if (options?.sort) params.append('sort', options.sort);
 
-    const path = `/repositories/${workspace}/${repoSlug}/refs/branches${
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/refs/branches${
       params.toString() ? `?${params.toString()}` : ''
     }`;
 
@@ -35,7 +36,7 @@ export class BranchesResource {
   async get(workspace: string, repoSlug: string, branchName: string): Promise<Branch> {
     // Branch names may contain slashes, need to encode properly
     const encodedBranchName = encodeURIComponent(branchName);
-    const path = `/repositories/${workspace}/${repoSlug}/refs/branches/${encodedBranchName}`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/refs/branches/${encodedBranchName}`;
     return this.client.get<Branch>(path);
   }
 
@@ -43,7 +44,7 @@ export class BranchesResource {
    * Create a new branch
    */
   async create(workspace: string, repoSlug: string, params: CreateBranchParams): Promise<Branch> {
-    const path = `/repositories/${workspace}/${repoSlug}/refs/branches`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/refs/branches`;
     return this.client.post<Branch>(path, params);
   }
 
@@ -52,7 +53,7 @@ export class BranchesResource {
    */
   async delete(workspace: string, repoSlug: string, branchName: string): Promise<void> {
     const encodedBranchName = encodeURIComponent(branchName);
-    const path = `/repositories/${workspace}/${repoSlug}/refs/branches/${encodedBranchName}`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/refs/branches/${encodedBranchName}`;
     await this.client.delete<void>(path);
   }
 }

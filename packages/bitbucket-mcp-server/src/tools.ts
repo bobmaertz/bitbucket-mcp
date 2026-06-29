@@ -25,10 +25,13 @@ import {
   listPipelineSteps,
   getStepLog,
   listSchedules,
+  listRepositories,
+  getRepository,
   type Logger,
   type TargetDefaults,
   type PipelineStatus,
 } from 'bitbucket-core';
+import type { WorkspaceRole } from 'bitbucket-api';
 
 export interface ToolContext {
   api: BitbucketAPI;
@@ -49,7 +52,7 @@ function json(data: unknown): CallToolResult {
 
 const workspaceRepo = {
   workspace: { type: 'string', description: 'Workspace ID (defaults to BITBUCKET_WORKSPACE)' },
-  repo: { type: 'string', description: 'Repository slug (defaults to BITBUCKET_DEFAULT_REPO)' },
+  repo: { type: 'string', description: 'Repository slug' },
 } as const;
 
 const paging = {
@@ -64,6 +67,31 @@ function schema(properties: Record<string, object>, required: string[] = []): To
 // Tool definitions ------------------------------------------------------------
 
 export const readOnlyTools: Tool[] = [
+  {
+    name: 'bitbucket_list_repositories',
+    description:
+      'List repositories the authenticated user can access. Omit "workspace" to list across all workspaces you belong to; pass "workspace" to scope to one. Lean summary per repo; "repos" is [] when none.',
+    inputSchema: schema({
+      workspace: {
+        type: 'string',
+        description:
+          'Workspace ID to scope to (optional; defaults to all workspaces you belong to)',
+      },
+      role: {
+        type: 'string',
+        enum: ['owner', 'collaborator', 'member'],
+        description: 'Workspace membership role filter, used only when no workspace given',
+      },
+      query: { type: 'string', description: 'Bitbucket query expression (optional)' },
+      sort: { type: 'string', description: 'Sort field, e.g. -updated_on (optional)' },
+      ...paging,
+    }),
+  },
+  {
+    name: 'bitbucket_get_repository',
+    description: 'Get metadata for a single repository.',
+    inputSchema: schema({ ...workspaceRepo }, ['repo']),
+  },
   {
     name: 'bitbucket_list_pull_requests',
     description: 'List pull requests for a repository (defaults to OPEN). Lean summary per PR.',
@@ -111,7 +139,8 @@ export const readOnlyTools: Tool[] = [
   },
   {
     name: 'bitbucket_list_pr_comments',
-    description: 'List comments on a pull request (raw content, inline location, thread parent).',
+    description:
+      'List comments on a pull request (raw content, inline location, thread parent, and resolved status for inline threads).',
     inputSchema: schema(
       { ...workspaceRepo, id: { type: 'number', description: 'Pull request ID' }, ...paging },
       ['id']
@@ -282,6 +311,23 @@ function listArgs(ctx: ToolContext, args: Record<string, unknown>) {
 }
 
 export const handlers: Record<string, Handler> = {
+  bitbucket_list_repositories: async (ctx, args) =>
+    json(
+      await listRepositories(ctx.api, {
+        workspace: args.workspace as string | undefined,
+        role: args.role as WorkspaceRole | undefined,
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+        query: args.query as string | undefined,
+        sort: args.sort as string | undefined,
+      })
+    ),
+
+  bitbucket_get_repository: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(await getRepository(ctx.api, { workspace, repo }));
+  },
+
   bitbucket_list_pull_requests: async (ctx, args) =>
     json(
       await listPullRequests(ctx.api, {

@@ -7,6 +7,7 @@ import type {
   ListOptions,
   Commit,
 } from '../types/index.js';
+import { seg } from '../utils/path.js';
 
 /**
  * Pull Requests resource API
@@ -30,7 +31,7 @@ export class PullRequestsResource {
     if (options?.q) params.append('q', options.q);
     if (options?.sort) params.append('sort', options.sort);
 
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests${
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests${
       params.toString() ? `?${params.toString()}` : ''
     }`;
 
@@ -41,7 +42,7 @@ export class PullRequestsResource {
    * Get a specific pull request
    */
   async get(workspace: string, repoSlug: string, prId: number): Promise<PullRequest> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}`;
     return this.client.get<PullRequest>(path);
   }
 
@@ -53,7 +54,7 @@ export class PullRequestsResource {
     repoSlug: string,
     params: CreatePullRequestParams
   ): Promise<PullRequest> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests`;
     return this.client.post<PullRequest>(path, params);
   }
 
@@ -66,7 +67,7 @@ export class PullRequestsResource {
     prId: number,
     params: UpdatePullRequestParams
   ): Promise<PullRequest> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}`;
     return this.client.put<PullRequest>(path, params);
   }
 
@@ -74,7 +75,7 @@ export class PullRequestsResource {
    * Decline a pull request
    */
   async decline(workspace: string, repoSlug: string, prId: number): Promise<PullRequest> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/decline`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/decline`;
     return this.client.post<PullRequest>(path);
   }
 
@@ -82,7 +83,7 @@ export class PullRequestsResource {
    * Approve a pull request
    */
   async approve(workspace: string, repoSlug: string, prId: number): Promise<void> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/approve`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/approve`;
     await this.client.post<void>(path);
   }
 
@@ -90,7 +91,7 @@ export class PullRequestsResource {
    * Unapprove a pull request
    */
   async unapprove(workspace: string, repoSlug: string, prId: number): Promise<void> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/approve`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/approve`;
     await this.client.delete<void>(path);
   }
 
@@ -107,7 +108,7 @@ export class PullRequestsResource {
       merge_strategy?: 'merge_commit' | 'squash' | 'fast_forward';
     }
   ): Promise<PullRequest> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/merge`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/merge`;
     return this.client.post<PullRequest>(path, options);
   }
 
@@ -124,7 +125,7 @@ export class PullRequestsResource {
     if (options?.page) params.append('page', options.page.toString());
     if (options?.pagelen) params.append('pagelen', options.pagelen.toString());
 
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/commits${
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/commits${
       params.toString() ? `?${params.toString()}` : ''
     }`;
 
@@ -135,7 +136,7 @@ export class PullRequestsResource {
    * Get diff for a pull request
    */
   async getDiff(workspace: string, repoSlug: string, prId: number): Promise<string> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/diff`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/diff`;
     return this.client.get<string>(path);
   }
 
@@ -143,7 +144,7 @@ export class PullRequestsResource {
    * Get patch for a pull request
    */
   async getPatch(workspace: string, repoSlug: string, prId: number): Promise<string> {
-    const path = `/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/patch`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/patch`;
     return this.client.get<string>(path);
   }
 }
