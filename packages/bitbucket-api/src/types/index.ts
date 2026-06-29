@@ -7,3 +7,4 @@ export * from './pullrequest.js';
 export * from './comment.js';
 export * from './task.js';
 export * from './branch.js';
+export * from './pipeline.js';

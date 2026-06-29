@@ -1,4 +1,16 @@
-import type { PullRequest, Comment, Task, Branch, Commit, Links } from 'bitbucket-api';
+import type {
+  PullRequest,
+  Comment,
+  Task,
+  Branch,
+  Commit,
+  Links,
+  Pipeline,
+  PipelineStep,
+  PipelineSchedule,
+  PipelineTarget,
+  PipelineVariable,
+} from 'bitbucket-api';
 
 /**
  * Token-sparse presenters.
@@ -128,5 +140,105 @@ export function presentCommit(commit: Commit): Record<string, unknown> {
     message: commit.message?.trim(),
     author: commit.author?.raw,
     date: commit.date,
+  });
+}
+
+// Pipelines -------------------------------------------------------------------
+
+/** Map a `pipeline_trigger_*` discriminator to push|manual|schedule. */
+function triggerType(type: string | undefined): string | undefined {
+  if (!type) return undefined;
+  return type.replace(/^pipeline_trigger_/, '').replace(/^scheduled$/, 'schedule');
+}
+
+function durationBetween(started?: string, completed?: string): number | undefined {
+  if (!started || !completed) return undefined;
+  const seconds = Math.round((new Date(completed).getTime() - new Date(started).getTime()) / 1000);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
+}
+
+/**
+ * Normalize a run target to a clean shape: `{ branch }` / `{ tag }` for ref
+ * targets, `{ pull_request_id, ref }` for PR targets, `{ commit }` for bare
+ * commits. Unknown shapes fall back to whatever ref/commit data is present.
+ */
+function presentTarget(target: PipelineTarget | undefined): Record<string, unknown> | undefined {
+  if (!target) return undefined;
+  switch (target.type) {
+    case 'pipeline_ref_target': {
+      const key = target.ref_type === 'tag' ? 'tag' : 'branch';
+      return compact({ [key]: target.ref_name, commit: shortHash(target.commit?.hash) });
+    }
+    case 'pipeline_pullrequest_target':
+      return compact({
+        pull_request_id: target.pullrequest?.id,
+        ref: target.source ?? target.ref_name,
+        commit: shortHash(target.commit?.hash),
+      });
+    case 'pipeline_commit_target':
+      return compact({ commit: shortHash(target.commit?.hash) });
+    default:
+      return compact({ ref: target.ref_name, commit: shortHash(target.commit?.hash) });
+  }
+}
+
+/** Secured variables are masked by Bitbucket; surface them as `(secured)`. */
+function presentVariable(variable: PipelineVariable): Record<string, unknown> {
+  return compact({
+    key: variable.key,
+    value: variable.secured ? '(secured)' : variable.value,
+    secured: variable.secured || undefined,
+  });
+}
+
+/** Lean pipeline shape for list views. */
+export function presentPipelineSummary(pipeline: Pipeline): Record<string, unknown> {
+  return compact({
+    build_number: pipeline.build_number,
+    uuid: pipeline.uuid,
+    state: pipeline.state?.name,
+    result: pipeline.state?.result?.name,
+    trigger_type: triggerType(pipeline.trigger?.type),
+    target: presentTarget(pipeline.target),
+    created_on: pipeline.created_on,
+    duration_in_seconds: pipeline.build_seconds_used,
+  });
+}
+
+/** Rich pipeline shape for single-run views (adds creator, variables, etc.). */
+export function presentPipeline(pipeline: Pipeline): Record<string, unknown> {
+  return compact({
+    ...presentPipelineSummary(pipeline),
+    creator: pipeline.creator?.display_name,
+    completed_on: pipeline.completed_on,
+    is_scheduled: triggerType(pipeline.trigger?.type) === 'schedule',
+    variables: (pipeline.variables ?? []).map(presentVariable),
+  });
+}
+
+export function presentPipelineStep(step: PipelineStep): Record<string, unknown> {
+  return compact({
+    step_uuid: step.uuid,
+    name: step.name,
+    state: step.state?.name,
+    result: step.state?.result?.name,
+    started_on: step.started_on,
+    duration_in_seconds:
+      step.duration_in_seconds ?? durationBetween(step.started_on, step.completed_on),
+    has_log: Boolean(step.started_on),
+  });
+}
+
+export function presentSchedule(schedule: PipelineSchedule): Record<string, unknown> {
+  return compact({
+    uuid: schedule.uuid,
+    enabled: schedule.enabled,
+    cron_pattern: schedule.cron_pattern,
+    target: compact({
+      ref_name: schedule.target?.ref_name,
+      ref_type: schedule.target?.ref_type,
+      selector: schedule.target?.selector?.pattern,
+    }),
+    type: schedule.type,
   });
 }

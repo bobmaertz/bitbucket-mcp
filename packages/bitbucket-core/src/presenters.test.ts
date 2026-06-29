@@ -1,6 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { compact, presentPullRequestSummary, presentComment, presentBranch } from './presenters.js';
-import type { PullRequest, Comment, Branch } from 'bitbucket-api';
+import {
+  compact,
+  presentPullRequestSummary,
+  presentComment,
+  presentBranch,
+  presentPipelineSummary,
+  presentPipeline,
+  presentPipelineStep,
+  presentSchedule,
+} from './presenters.js';
+import type {
+  PullRequest,
+  Comment,
+  Branch,
+  Pipeline,
+  PipelineStep,
+  PipelineSchedule,
+} from 'bitbucket-api';
 
 describe('compact', () => {
   it('drops null/undefined/empty but keeps false and 0', () => {
@@ -87,6 +103,115 @@ describe('presentBranch', () => {
       target_date: '2026-01-01T00:00:00Z',
       author: 'Jo',
       message: 'init',
+    });
+  });
+});
+
+describe('presentPipelineSummary', () => {
+  it('flattens state/result, normalizes trigger and a branch target', () => {
+    const pipeline = {
+      build_number: 12,
+      uuid: '{p}',
+      state: { type: 'pipeline_state_completed', name: 'COMPLETED', result: { name: 'FAILED' } },
+      trigger: { type: 'pipeline_trigger_push' },
+      target: { type: 'pipeline_ref_target', ref_type: 'branch', ref_name: 'feature/x' },
+      created_on: '2026-01-01T00:00:00Z',
+      build_seconds_used: 87,
+    } as unknown as Pipeline;
+
+    expect(presentPipelineSummary(pipeline)).toEqual({
+      build_number: 12,
+      uuid: '{p}',
+      state: 'COMPLETED',
+      result: 'FAILED',
+      trigger_type: 'push',
+      target: { branch: 'feature/x' },
+      created_on: '2026-01-01T00:00:00Z',
+      duration_in_seconds: 87,
+    });
+  });
+
+  it('normalizes a pull-request target', () => {
+    const pipeline = {
+      build_number: 5,
+      uuid: '{p}',
+      trigger: { type: 'pipeline_trigger_push' },
+      target: { type: 'pipeline_pullrequest_target', pullrequest: { id: 99 }, source: 'feature/y' },
+    } as unknown as Pipeline;
+
+    expect(presentPipelineSummary(pipeline).target).toEqual({
+      pull_request_id: 99,
+      ref: 'feature/y',
+    });
+  });
+});
+
+describe('presentPipeline', () => {
+  it('masks secured variables and flags scheduled runs', () => {
+    const pipeline = {
+      build_number: 3,
+      uuid: '{p}',
+      trigger: { type: 'pipeline_trigger_schedule' },
+      creator: { display_name: 'Jo' },
+      completed_on: '2026-01-01T01:00:00Z',
+      variables: [
+        { key: 'ENV', value: 'prod' },
+        { key: 'TOKEN', value: 'xxx', secured: true },
+      ],
+    } as unknown as Pipeline;
+
+    const out = presentPipeline(pipeline);
+    expect(out.creator).toBe('Jo');
+    expect(out.is_scheduled).toBe(true);
+    expect(out.variables).toEqual([
+      { key: 'ENV', value: 'prod' },
+      { key: 'TOKEN', value: '(secured)', secured: true },
+    ]);
+    expect(JSON.stringify(out)).not.toContain('xxx');
+  });
+});
+
+describe('presentPipelineStep', () => {
+  it('derives duration and has_log, surfaces pass/fail', () => {
+    const step = {
+      uuid: '{s}',
+      name: 'Build',
+      state: { type: 'pipeline_step_state_completed', name: 'COMPLETED', result: { name: 'SUCCESSFUL' } },
+      started_on: '2026-01-01T00:00:00Z',
+      completed_on: '2026-01-01T00:00:30Z',
+    } as unknown as PipelineStep;
+
+    expect(presentPipelineStep(step)).toEqual({
+      step_uuid: '{s}',
+      name: 'Build',
+      state: 'COMPLETED',
+      result: 'SUCCESSFUL',
+      started_on: '2026-01-01T00:00:00Z',
+      duration_in_seconds: 30,
+      has_log: true,
+    });
+  });
+
+  it('reports has_log=false for a step that has not started', () => {
+    const step = { uuid: '{s}', state: { type: 'x', name: 'PENDING' } } as unknown as PipelineStep;
+    expect(presentPipelineStep(step)).toMatchObject({ has_log: false });
+  });
+});
+
+describe('presentSchedule', () => {
+  it('surfaces cron pattern, enabled flag, and target ref', () => {
+    const schedule = {
+      uuid: '{sc}',
+      enabled: false,
+      cron_pattern: '0 0 * * *',
+      target: { ref_type: 'branch', ref_name: 'main' },
+    } as unknown as PipelineSchedule;
+
+    expect(presentSchedule(schedule)).toEqual({
+      uuid: '{sc}',
+      enabled: false,
+      cron_pattern: '0 0 * * *',
+      target: { ref_name: 'main', ref_type: 'branch' },
     });
   });
 });
