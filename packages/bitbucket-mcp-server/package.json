@@ -1,6 +1,6 @@
 {
   "name": "@bobmaertz/bitbucket-mcp",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Model Context Protocol server for Bitbucket Cloud (read-only)",
   "type": "module",
   "bin": {
