@@ -7,6 +7,26 @@ on:
     branches: [main, develop]
 
 jobs:
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history so the secret scan covers every commit, not just HEAD.
+          fetch-depth: 0
+
+      - name: Credential-file & .gitignore guard
+        run: npm run security:check
+
+      - name: Scan for leaked credentials (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

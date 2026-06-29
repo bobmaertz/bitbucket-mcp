@@ -1,0 +1,23 @@
+title = "gitleaks config — bitbucket-mcp"
+
+# Build on gitleaks' built-in rule set (AWS keys, GitHub PATs, generic
+# high-entropy assignments, private keys, etc.).
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+Paths that legitimately contain secret-shaped strings that are NOT real
+credentials: the vendored Bitbucket OpenAPI spec (example UUIDs, tokens, and
+base64 SVG icons in its docs) and the env template (placeholders only).
+"""
+paths = [
+  '''packages/bitbucket-core/contract/bitbucket-openapi\.json''',
+  '''\.env\.example$''',
+]
+# Placeholder values shipped in docs/templates — never real secrets.
+regexes = [
+  '''your-api-token''',
+  '''your-app-password''',
+  '''you@example\.com''',
+]
