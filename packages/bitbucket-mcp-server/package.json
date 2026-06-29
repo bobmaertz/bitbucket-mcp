@@ -1,10 +1,13 @@
 {
-  "name": "bitbucket-mcp-server",
-  "version": "1.0.0",
-  "description": "Model Context Protocol server for Bitbucket Cloud",
+  "name": "@bobmaertz/bitbucket-mcp",
+  "version": "0.0.1",
+  "description": "Model Context Protocol server for Bitbucket Cloud (read-only)",
   "type": "module",
   "bin": {
-    "bitbucket-mcp-server": "./dist/index.js"
+    "bitbucket-mcp": "./dist/index.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "main": "./dist/index.js",
   "files": [

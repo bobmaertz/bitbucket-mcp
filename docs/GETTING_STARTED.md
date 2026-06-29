@@ -2,12 +2,11 @@
 
 This guide will help you set up and start using the Bitbucket MCP Server.
 
-> **⚠️ Current source of truth:** See [`README.md`](./README.md) and
+> **⚠️ Current source of truth:** See [`README.md`](../README.md) and
 > [`.env.example`](../.env.example). Authentication now uses an **Atlassian API
 > token** (`BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN`) — app passwords are
 > deprecated by Atlassian and only kept as a fallback. The MCP surface is now
-> **read-only**. Audit findings and the roadmap are tracked on the Todoist
-> "Bitbucket MCP" board. Sections below referring to app passwords or write
+> **read-only**. Sections below referring to app passwords or write
 > tools are historical.
 
 ## Prerequisites
