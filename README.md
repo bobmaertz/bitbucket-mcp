@@ -64,7 +64,7 @@ npm test                 # unit + hermetic HTTP integration
 npm run test:contract    # validate against the vendored Bitbucket OpenAPI spec
 ```
 
-Publishing the npm package: see [docs/PUBLISHING.md](./docs/PUBLISHING.md). Design notes: [docs/ai/DESIGN.md](./docs/ai/DESIGN.md).
+Design notes: [docs/ai/DESIGN.md](./docs/ai/DESIGN.md).
 
 ## License
 
