@@ -58,9 +58,12 @@ export class PipelinesResource {
     const path = `/repositories/${workspace}/${repoSlug}/pipelines/${pipelineRef(
       pipeline
     )}/steps/${pipelineRef(step)}/log`;
+    // Bitbucket serves step logs as application/octet-stream; a `text/plain`
+    // Accept negotiation is rejected with 406, so accept any content type and
+    // read the body as text.
     return this.client.get<string>(path, {
       responseType: 'text',
-      headers: { Accept: 'text/plain' },
+      headers: { Accept: '*/*' },
     });
   }
 

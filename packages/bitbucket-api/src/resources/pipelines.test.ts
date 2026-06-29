@@ -59,7 +59,7 @@ describe('PipelinesResource', () => {
       expect(log).toBe('log output');
       expect(mockClient.get).toHaveBeenCalledWith(
         '/repositories/ws/repo/pipelines/7/steps/%7Bstep-uuid%7D/log',
-        { responseType: 'text', headers: { Accept: 'text/plain' } }
+        { responseType: 'text', headers: { Accept: '*/*' } }
       );
     });
   });
