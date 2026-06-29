@@ -91,7 +91,7 @@ describe('BitbucketClient', () => {
         request.mockRejectedValue({
           response: { status, data: { error: { message: 'bad' } }, headers: {} },
         });
-        await expect(client.get('/x')).rejects.toBeInstanceOf(type as never);
+        await expect(client.get('/x')).rejects.toBeInstanceOf(type);
       });
     }
 

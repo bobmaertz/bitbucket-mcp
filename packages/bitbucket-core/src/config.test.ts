@@ -22,7 +22,7 @@ describe('loadConfig', () => {
       BITBUCKET_WORKSPACE: 'acme',
       BITBUCKET_USERNAME: 'legacy',
       BITBUCKET_APP_PASSWORD: 'pw',
-    } as NodeJS.ProcessEnv);
+    });
     expect(config.usedLegacyAuth).toBe(true);
     expect(config.auth).toEqual({ username: 'legacy', appPassword: 'pw' });
   });
@@ -60,7 +60,7 @@ describe('validateConfig', () => {
     const config = loadConfig({
       BITBUCKET_WORKSPACE: 'acme',
       BITBUCKET_USERNAME: 'legacy',
-    } as NodeJS.ProcessEnv);
+    });
     expect(() => validateConfig(config)).toThrow(/Legacy auth requires/);
   });
 });

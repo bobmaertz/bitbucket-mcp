@@ -45,6 +45,14 @@ describe('handlers', () => {
     };
   }
 
+  function textOf(result: { content: { type: string; text?: string }[] }): string {
+    const block = result.content[0];
+    if (block.type !== 'text' || block.text === undefined) {
+      throw new Error('expected a text content block');
+    }
+    return block.text;
+  }
+
   it('resolves the target repo and returns compact JSON', async () => {
     const list = vi.fn().mockResolvedValue({
       size: 1,
@@ -66,7 +74,7 @@ describe('handlers', () => {
     const result = await handlers.bitbucket_list_pull_requests(context(list), { repo: 'repo' });
     expect(list).toHaveBeenCalledWith('acme', 'repo', expect.objectContaining({ state: 'OPEN' }));
 
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).not.toContain('\n'); // compact, not pretty-printed
     const parsed = JSON.parse(text);
     expect(parsed.items[0]).toMatchObject({ id: 1, source_branch: 'f', dest_branch: 'main' });
@@ -96,7 +104,7 @@ describe('handlers', () => {
     expect(workspacesList).toHaveBeenCalledTimes(1);
     expect(reposList).toHaveBeenCalledWith('acme', expect.any(Object));
 
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(textOf(result));
     expect(parsed.repos[0]).toMatchObject({
       full_name: 'acme/widgets',
       slug: 'widgets',
@@ -114,7 +122,7 @@ describe('handlers', () => {
 
     const result = await handlers.bitbucket_list_repositories(ctx, { workspace: 'empty-ws' });
     expect(reposList).toHaveBeenCalledWith('empty-ws', expect.any(Object));
-    const parsed = JSON.parse(result.content[0].text);
+    const parsed = JSON.parse(textOf(result));
     expect(parsed.repos).toEqual([]);
     expect(result.isError).toBeUndefined();
   });
