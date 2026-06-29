@@ -85,17 +85,16 @@ describe('handlers', () => {
     expect(parsed.items[0]).toMatchObject({ id: 1, source_branch: 'f', dest_branch: 'main' });
   });
 
-  it('enumerates workspaces and aggregates repos when no workspace is given', async () => {
+  // CHANGE-2770 regression: omitting `workspace` must scope to the configured
+  // BITBUCKET_WORKSPACE via `GET /repositories/{workspace}` — never the retired
+  // cross-workspace `GET /workspaces` enumeration.
+  it('defaults to the configured workspace when none is given', async () => {
     const reposList = vi.fn().mockResolvedValue({
       size: 1,
       next: undefined,
       values: [{ full_name: 'acme/widgets', is_private: true, links: {} }],
     });
-    const workspacesList = vi.fn().mockResolvedValue({
-      size: 1,
-      next: undefined,
-      values: [{ slug: 'acme', type: 'workspace', links: {} }],
-    });
+    const workspacesList = vi.fn();
     const ctx = {
       api: {
         repositories: { list: reposList },
@@ -106,8 +105,8 @@ describe('handlers', () => {
     };
 
     const result = await handlers.bitbucket_list_repositories(ctx, {});
-    expect(workspacesList).toHaveBeenCalledTimes(1);
     expect(reposList).toHaveBeenCalledWith('acme', expect.any(Object));
+    expect(workspacesList).not.toHaveBeenCalled(); // no deprecated workspace listing
 
     const parsed = JSON.parse(textOf(result));
     expect(parsed.repos[0]).toMatchObject({
@@ -115,6 +114,18 @@ describe('handlers', () => {
       slug: 'widgets',
       workspace: 'acme',
     });
+  });
+
+  it('uses an explicit workspace arg over the configured default', async () => {
+    const reposList = vi.fn().mockResolvedValue({ size: 0, next: undefined, values: [] });
+    const ctx = {
+      api: { repositories: { list: reposList } } as unknown as BitbucketAPI,
+      defaults: { workspace: 'acme' },
+      logger: createLogger('error'),
+    };
+
+    await handlers.bitbucket_list_repositories(ctx, { workspace: 'other' });
+    expect(reposList).toHaveBeenCalledWith('other', expect.any(Object));
   });
 
   it('returns an empty repos array when a scoped workspace has no repositories', async () => {

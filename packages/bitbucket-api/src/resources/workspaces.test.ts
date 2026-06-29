@@ -17,20 +17,38 @@ describe('WorkspacesResource', () => {
     resource = new WorkspacesResource(mockClient);
   });
 
-  it('lists workspaces with no options', async () => {
+  // Regression guard for CHANGE-2770: the deprecated `GET /workspaces` was
+  // retired, so we must hit the supported `GET /user/workspaces` instead.
+  it('lists workspaces via the supported /user/workspaces endpoint', async () => {
     (mockClient.get as any).mockResolvedValue({ values: [], size: 0 });
 
     await resource.list();
 
-    expect(mockClient.get).toHaveBeenCalledWith('/workspaces');
+    expect(mockClient.get).toHaveBeenCalledWith('/user/workspaces');
+    const path = (mockClient.get as any).mock.calls[0][0] as string;
+    expect(path).not.toContain('/workspaces?'); // never the deprecated bare path
+    expect(path.startsWith('/user/workspaces')).toBe(true);
   });
 
-  it('applies the membership role filter', async () => {
-    (mockClient.get as any).mockResolvedValue({ values: [], size: 0 });
+  it('surfaces the nested workspace from each workspace_access wrapper', async () => {
+    (mockClient.get as any).mockResolvedValue({
+      size: 1,
+      page: 1,
+      pagelen: 25,
+      values: [
+        {
+          type: 'workspace_access',
+          administrator: true,
+          workspace: { type: 'workspace', slug: 'acme', name: 'Acme', uuid: '{w}', links: {} },
+        },
+      ],
+    });
 
-    await resource.list({ role: 'member' });
+    const result = await resource.list();
 
-    expect(mockClient.get).toHaveBeenCalledWith('/workspaces?role=member');
+    expect(result.values).toEqual([
+      { type: 'workspace', slug: 'acme', name: 'Acme', uuid: '{w}', links: {} },
+    ]);
   });
 
   it('passes paging through', async () => {
@@ -39,7 +57,7 @@ describe('WorkspacesResource', () => {
     await resource.list({ page: 2, pagelen: 10 });
 
     const path = (mockClient.get as any).mock.calls[0][0] as string;
-    expect(path).toContain('/workspaces?');
+    expect(path).toContain('/user/workspaces?');
     expect(path).toContain('page=2');
     expect(path).toContain('pagelen=10');
   });

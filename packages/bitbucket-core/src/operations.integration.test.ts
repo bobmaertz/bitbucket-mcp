@@ -2,7 +2,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { BitbucketAPI } from '@bobmaertz/bitbucket-api';
-import { listPullRequests, getPullRequestDiff, listBranches } from './operations.js';
+import {
+  listPullRequests,
+  getPullRequestDiff,
+  listBranches,
+  listRepositories,
+} from './operations.js';
 
 /**
  * Hermetic integration test: a real local HTTP server stands in for Bitbucket
@@ -15,11 +20,28 @@ describe('operations (HTTP integration)', () => {
   let prHits = 0;
   let lastAuthHeader: string | undefined;
   let lastBranchesUrl: string | undefined;
+  const requestedPaths: string[] = [];
 
   beforeAll(async () => {
     server = http.createServer((req, res) => {
       lastAuthHeader = req.headers.authorization;
       const url = req.url ?? '';
+      requestedPaths.push(url);
+
+      // Workspace-scoped repository listing: `/repositories/acme` with no repo
+      // segment (distinct from `/repositories/acme/repo/...` handled below).
+      if (url.startsWith('/repositories/acme?') || url === '/repositories/acme') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            size: 1,
+            page: 1,
+            pagelen: 25,
+            values: [{ full_name: 'acme/widgets', is_private: true, links: {} }],
+          })
+        );
+        return;
+      }
 
       if (url.startsWith('/repositories/acme/repo/pullrequests') && !url.includes('/diff')) {
         prHits++;
@@ -145,6 +167,20 @@ describe('operations (HTTP integration)', () => {
     expect(result.total_lines).toBeGreaterThan(50);
     expect(result.diff.split('\n')).toHaveLength(50);
     expect(result.files_changed).toBe(1);
+  });
+
+  it('lists a workspace’s repos via /repositories/{workspace}, not the retired /workspaces', async () => {
+    requestedPaths.length = 0;
+    const result = await listRepositories(api(), { workspace: 'acme' });
+
+    expect(result.repos[0]).toMatchObject({ full_name: 'acme/widgets', workspace: 'acme' });
+    // CHANGE-2770 regression: the retired workspace-listing endpoints must
+    // never be hit; every request stays under /repositories/{workspace}.
+    expect(requestedPaths.some((p) => p.startsWith('/repositories/acme'))).toBe(true);
+    expect(requestedPaths.some((p) => p === '/workspaces' || p.startsWith('/workspaces?'))).toBe(
+      false
+    );
+    expect(requestedPaths.some((p) => p.startsWith('/user/workspaces'))).toBe(false);
   });
 
   it('shortens branch hashes', async () => {
