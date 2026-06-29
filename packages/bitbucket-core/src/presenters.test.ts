@@ -67,6 +67,50 @@ describe('presentComment', () => {
     expect(JSON.stringify(out)).not.toContain('<p>hello</p>');
     expect(out).not.toHaveProperty('deleted'); // false is dropped here via undefined mapping
   });
+
+  it('omits resolved for non-inline comments', () => {
+    const comment = {
+      id: 1,
+      content: { raw: 'general note' },
+      user: { display_name: 'Jo' },
+      created_on: '2026-01-01T00:00:00Z',
+    } as unknown as Comment;
+
+    expect(presentComment(comment)).not.toHaveProperty('resolved');
+  });
+
+  it('surfaces resolved:false for an unresolved inline thread', () => {
+    const comment = {
+      id: 2,
+      content: { raw: 'needs work' },
+      user: { display_name: 'Jo' },
+      created_on: '2026-01-01T00:00:00Z',
+      inline: { path: 'src/a.ts', to: 10 },
+    } as unknown as Comment;
+
+    expect(presentComment(comment)).toMatchObject({ resolved: false });
+  });
+
+  it('surfaces resolved status with resolver and timestamp for a resolved thread', () => {
+    const comment = {
+      id: 3,
+      content: { raw: 'fixed' },
+      user: { display_name: 'Jo' },
+      created_on: '2026-01-01T00:00:00Z',
+      inline: { path: 'src/a.ts', to: 10 },
+      resolution: {
+        type: 'comment_resolution',
+        user: { display_name: 'Sam' },
+        created_on: '2026-01-02T00:00:00Z',
+      },
+    } as unknown as Comment;
+
+    expect(presentComment(comment)).toMatchObject({
+      resolved: true,
+      resolved_by: 'Sam',
+      resolved_on: '2026-01-02T00:00:00Z',
+    });
+  });
 });
 
 describe('presentBranch', () => {

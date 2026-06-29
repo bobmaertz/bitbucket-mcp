@@ -14,11 +14,13 @@ describe('read-only tool surface', () => {
         'bitbucket_get_pr_commits',
         'bitbucket_get_pr_diff',
         'bitbucket_get_pull_request',
+        'bitbucket_get_repository',
         'bitbucket_get_task',
         'bitbucket_list_branches',
         'bitbucket_list_pr_comments',
         'bitbucket_list_pr_tasks',
         'bitbucket_list_pull_requests',
+        'bitbucket_list_repositories',
       ].sort()
     );
   });
@@ -38,12 +40,20 @@ describe('handlers', () => {
     const api = { pullRequests: { list: listImpl } } as unknown as BitbucketAPI;
     return {
       api,
-      defaults: { workspace: 'acme', defaultRepo: 'repo' },
+      defaults: { workspace: 'acme' },
       logger: createLogger('error'),
     };
   }
 
-  it('resolves default repo and returns compact JSON', async () => {
+  function textOf(result: { content: { type: string; text?: string }[] }): string {
+    const block = result.content[0];
+    if (block.type !== 'text' || block.text === undefined) {
+      throw new Error('expected a text content block');
+    }
+    return block.text;
+  }
+
+  it('resolves the target repo and returns compact JSON', async () => {
     const list = vi.fn().mockResolvedValue({
       size: 1,
       next: undefined,
@@ -61,13 +71,60 @@ describe('handlers', () => {
       ],
     });
 
-    const result = await handlers.bitbucket_list_pull_requests(context(list), {});
+    const result = await handlers.bitbucket_list_pull_requests(context(list), { repo: 'repo' });
     expect(list).toHaveBeenCalledWith('acme', 'repo', expect.objectContaining({ state: 'OPEN' }));
 
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).not.toContain('\n'); // compact, not pretty-printed
     const parsed = JSON.parse(text);
     expect(parsed.items[0]).toMatchObject({ id: 1, source_branch: 'f', dest_branch: 'main' });
+  });
+
+  it('enumerates workspaces and aggregates repos when no workspace is given', async () => {
+    const reposList = vi.fn().mockResolvedValue({
+      size: 1,
+      next: undefined,
+      values: [{ full_name: 'acme/widgets', is_private: true, links: {} }],
+    });
+    const workspacesList = vi.fn().mockResolvedValue({
+      size: 1,
+      next: undefined,
+      values: [{ slug: 'acme', type: 'workspace', links: {} }],
+    });
+    const ctx = {
+      api: {
+        repositories: { list: reposList },
+        workspaces: { list: workspacesList },
+      } as unknown as BitbucketAPI,
+      defaults: { workspace: 'acme' },
+      logger: createLogger('error'),
+    };
+
+    const result = await handlers.bitbucket_list_repositories(ctx, {});
+    expect(workspacesList).toHaveBeenCalledTimes(1);
+    expect(reposList).toHaveBeenCalledWith('acme', expect.any(Object));
+
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.repos[0]).toMatchObject({
+      full_name: 'acme/widgets',
+      slug: 'widgets',
+      workspace: 'acme',
+    });
+  });
+
+  it('returns an empty repos array when a scoped workspace has no repositories', async () => {
+    const reposList = vi.fn().mockResolvedValue({ size: 0, next: undefined, values: [] });
+    const ctx = {
+      api: { repositories: { list: reposList } } as unknown as BitbucketAPI,
+      defaults: { workspace: 'acme' },
+      logger: createLogger('error'),
+    };
+
+    const result = await handlers.bitbucket_list_repositories(ctx, { workspace: 'empty-ws' });
+    expect(reposList).toHaveBeenCalledWith('empty-ws', expect.any(Object));
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.repos).toEqual([]);
+    expect(result.isError).toBeUndefined();
   });
 
   it('errors clearly when no repo can be resolved', async () => {

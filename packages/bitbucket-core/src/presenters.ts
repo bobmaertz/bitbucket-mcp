@@ -1,4 +1,4 @@
-import type { PullRequest, Comment, Task, Branch, Commit, Links } from 'bitbucket-api';
+import type { PullRequest, Comment, Task, Branch, Commit, Links, Repository } from 'bitbucket-api';
 
 /**
  * Token-sparse presenters.
@@ -85,6 +85,12 @@ export function presentPullRequest(pr: PullRequest): Record<string, unknown> {
 }
 
 export function presentComment(comment: Comment): Record<string, unknown> {
+  // Resolution only applies to inline comment threads. For inline comments we
+  // emit `resolved` (including `false`, which is meaningful) from the actual
+  // `resolution` field rather than inferring; for non-inline comments the
+  // concept doesn't apply, so we omit it entirely.
+  const isInline = Boolean(comment.inline);
+  const resolution = comment.resolution ?? undefined;
   return compact({
     id: comment.id,
     author: comment.user?.display_name,
@@ -97,6 +103,9 @@ export function presentComment(comment: Comment): Record<string, unknown> {
           to: comment.inline.to,
         })
       : undefined,
+    resolved: isInline ? Boolean(resolution) : undefined,
+    resolved_by: resolution?.user?.display_name,
+    resolved_on: resolution?.created_on,
     parent_id: comment.parent?.id,
     deleted: comment.deleted || undefined,
   });
@@ -119,6 +128,24 @@ export function presentBranch(branch: Branch): Record<string, unknown> {
     target_date: branch.target?.date,
     author: branch.target?.author?.display_name,
     message: branch.target?.message?.trim(),
+  });
+}
+
+export function presentRepository(repo: Repository): Record<string, unknown> {
+  // `full_name` is "workspace/slug"; derive both from it (slug isn't documented
+  // as a standalone field in the Bitbucket spec).
+  const [workspace, slug] = (repo.full_name ?? '').split('/');
+  return compact({
+    full_name: repo.full_name,
+    slug: slug || repo.slug,
+    workspace,
+    is_private: repo.is_private,
+    description: repo.description?.trim(),
+    language: repo.language,
+    project: repo.project?.key,
+    mainbranch: repo.mainbranch?.name,
+    updated_on: repo.updated_on,
+    url: htmlUrl(repo.links),
   });
 }
 

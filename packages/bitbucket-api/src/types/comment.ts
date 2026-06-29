@@ -10,6 +10,17 @@ export interface InlineInfo {
 }
 
 /**
+ * Resolution status of an inline comment thread. Present (with the resolving
+ * user and timestamp) when the thread has been marked resolved; absent or null
+ * when unresolved.
+ */
+export interface CommentResolution {
+  type: 'comment_resolution';
+  user?: User;
+  created_on?: string;
+}
+
+/**
  * Comment object
  * Note: As of August 2025, comment IDs will be int64
  */
@@ -20,6 +31,7 @@ export interface Comment {
   created_on: string;
   updated_on: string;
   inline?: InlineInfo;
+  resolution?: CommentResolution | null;
   parent?: {
     id: number;
     links: Links;

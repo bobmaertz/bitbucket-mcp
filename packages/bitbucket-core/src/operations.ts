@@ -8,7 +8,9 @@ import {
   presentTask,
   presentBranch,
   presentCommit,
+  presentRepository,
 } from './presenters.js';
+import type { WorkspaceRole } from 'bitbucket-api';
 
 /**
  * A single token-sparse page of results. We return `has_more` + `page`
@@ -32,6 +34,18 @@ export interface ListParams {
 }
 
 const DEFAULT_PAGELEN = 25;
+/** Bitbucket's hard server-side cap on items per page. */
+const MAX_PAGELEN = 100;
+
+/**
+ * Resolve a caller-supplied `pagelen` to a sane value: default when omitted,
+ * and clamped to `[1, MAX_PAGELEN]` so a malformed or oversized request can't
+ * ask for an unbounded page (the tool schema advertises "max 100").
+ */
+function clampPagelen(pagelen?: number): number {
+  if (!Number.isFinite(pagelen)) return DEFAULT_PAGELEN;
+  return Math.min(Math.max(Math.floor(pagelen as number), 1), MAX_PAGELEN);
+}
 
 /** Construct the API client from config. The credential stays inside it. */
 export function createApi(config: CoreConfig): BitbucketAPI {
@@ -41,21 +55,21 @@ export function createApi(config: CoreConfig): BitbucketAPI {
 /** Non-secret target defaults handed to tool handlers (no credential). */
 export interface TargetDefaults {
   workspace: string;
-  defaultRepo?: string;
 }
 
 /**
- * Resolve the effective workspace/repo from explicit args, falling back to
- * configured defaults. Throws a clear error when no repo can be determined.
+ * Resolve the effective workspace/repo. `workspace` falls back to the
+ * configured default; `repo` must be supplied explicitly. Throws a clear error
+ * when no repo is given.
  */
 export function resolveTarget(
   defaults: TargetDefaults,
   args: { workspace?: string; repo?: string }
 ): { workspace: string; repo: string } {
   const workspace = args.workspace || defaults.workspace;
-  const repo = args.repo || defaults.defaultRepo;
+  const repo = args.repo;
   if (!repo) {
-    throw new Error('repo is required (no BITBUCKET_DEFAULT_REPO configured)');
+    throw new Error('repo is required');
   }
   return { workspace, repo };
 }
@@ -81,7 +95,7 @@ export async function listPullRequests(
   const response = await api.pullRequests.list(params.workspace, params.repo, {
     state: params.state ?? 'OPEN',
     page,
-    pagelen: params.pagelen ?? DEFAULT_PAGELEN,
+    pagelen: clampPagelen(params.pagelen),
     q: params.query,
     sort: params.sort,
   });
@@ -103,7 +117,7 @@ export async function getPullRequestCommits(
   const page = params.page ?? 1;
   const response = await api.pullRequests.getCommits(params.workspace, params.repo, params.id, {
     page,
-    pagelen: params.pagelen ?? DEFAULT_PAGELEN,
+    pagelen: clampPagelen(params.pagelen),
   });
   return toPage(response, presentCommit, page);
 }
@@ -132,7 +146,7 @@ export async function listPullRequestComments(
   const page = params.page ?? 1;
   const response = await api.comments.list(params.workspace, params.repo, params.id, {
     page,
-    pagelen: params.pagelen ?? DEFAULT_PAGELEN,
+    pagelen: clampPagelen(params.pagelen),
     q: params.query,
     sort: params.sort,
   });
@@ -159,7 +173,7 @@ export async function listPullRequestTasks(
   const page = params.page ?? 1;
   const response = await api.tasks.list(params.workspace, params.repo, params.id, {
     page,
-    pagelen: params.pagelen ?? DEFAULT_PAGELEN,
+    pagelen: clampPagelen(params.pagelen),
   });
   return toPage(response, presentTask, page);
 }
@@ -179,7 +193,7 @@ export async function listBranches(
   const page = params.page ?? 1;
   const response = await api.branches.list(params.workspace, params.repo, {
     page,
-    pagelen: params.pagelen ?? DEFAULT_PAGELEN,
+    pagelen: clampPagelen(params.pagelen),
     q: params.query,
     sort: params.sort,
   });
@@ -192,4 +206,85 @@ export async function getBranch(
 ): Promise<Record<string, unknown>> {
   const branch = await api.branches.get(params.workspace, params.repo, params.name);
   return presentBranch(branch);
+}
+
+/** A page of repositories. Uses an explicit `repos` key (always present, `[]`
+ * when none) so an empty result is unambiguous to an LLM rather than reading as
+ * a failed call. */
+export interface RepositoriesPage {
+  repos: Record<string, unknown>[];
+  page: number;
+  has_more: boolean;
+  total?: number;
+}
+
+/**
+ * List repositories the authenticated user can access. Always returns a `repos`
+ * array — empty when there are no matching repos.
+ *
+ * - With `workspace`: a single paged listing of that workspace
+ *   (`GET /repositories/{workspace}`).
+ * - Without `workspace`: enumerates the user's workspaces (`GET /workspaces`,
+ *   optionally filtered by membership `role`) and aggregates one page of repos
+ *   per workspace. The top-level cross-workspace `GET /repositories` listing was
+ *   deprecated by Atlassian (CHANGE-2770), so this is the supported path.
+ */
+export async function listRepositories(
+  api: BitbucketAPI,
+  params: {
+    workspace?: string;
+    role?: WorkspaceRole;
+    page?: number;
+    pagelen?: number;
+    query?: string;
+    sort?: string;
+  }
+): Promise<RepositoriesPage> {
+  const pagelen = clampPagelen(params.pagelen);
+
+  if (params.workspace) {
+    const page = params.page ?? 1;
+    const response = await api.repositories.list(params.workspace, {
+      page,
+      pagelen,
+      q: params.query,
+      sort: params.sort,
+    });
+    return {
+      repos: (response.values ?? []).map(presentRepository),
+      page,
+      has_more: Boolean(response.next),
+      total: response.size,
+    };
+  }
+
+  // No workspace: discover accessible workspaces, then aggregate their repos.
+  const wsResponse = await api.workspaces.list({ role: params.role, pagelen });
+  const workspaces = wsResponse.values ?? [];
+
+  const repos: Record<string, unknown>[] = [];
+  // `has_more` is true if any workspace had additional repo pages we didn't
+  // fetch, or if there are more workspaces beyond this page — narrow to a
+  // specific workspace to page through fully.
+  let hasMore = Boolean(wsResponse.next);
+
+  for (const ws of workspaces) {
+    const response = await api.repositories.list(ws.slug, {
+      pagelen,
+      q: params.query,
+      sort: params.sort,
+    });
+    for (const repo of response.values ?? []) repos.push(presentRepository(repo));
+    if (response.next) hasMore = true;
+  }
+
+  return { repos, page: 1, has_more: hasMore, total: repos.length };
+}
+
+export async function getRepository(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string }
+): Promise<Record<string, unknown>> {
+  const repo = await api.repositories.get(params.workspace, params.repo);
+  return presentRepository(repo);
 }

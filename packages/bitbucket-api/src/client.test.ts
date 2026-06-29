@@ -91,7 +91,7 @@ describe('BitbucketClient', () => {
         request.mockRejectedValue({
           response: { status, data: { error: { message: 'bad' } }, headers: {} },
         });
-        await expect(client.get('/x')).rejects.toBeInstanceOf(type as never);
+        await expect(client.get('/x')).rejects.toBeInstanceOf(type);
       });
     }
 
@@ -109,6 +109,16 @@ describe('BitbucketClient', () => {
         response: { status: 400, data: { message: 'direct' }, headers: {} },
       });
       await expect(client.get('/x')).rejects.toThrow('direct');
+    });
+
+    it('never produces an empty message when the body is empty', async () => {
+      const { client, request } = makeClient();
+      // An empty 403 body must fall back to the typed default, not ''.
+      request.mockRejectedValueOnce({ response: { status: 403, data: '', headers: {} } });
+      await expect(client.get('/x')).rejects.toThrow(/permission denied/i);
+      // Same for a default-cased status with no body.
+      request.mockRejectedValueOnce({ response: { status: 400, data: '', headers: {} } });
+      await expect(client.get('/x')).rejects.toThrow(/HTTP 400/);
     });
   });
 

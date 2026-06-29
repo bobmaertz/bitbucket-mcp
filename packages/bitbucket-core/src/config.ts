@@ -17,7 +17,6 @@ const LOG_LEVELS: readonly LogLevel[] = ['debug', 'info', 'warn', 'error'];
 export interface CoreConfig {
   auth: AuthConfig;
   workspace: string;
-  defaultRepo?: string;
   logLevel: LogLevel;
   /** When false, write operations (e.g. cutting a tag) are refused. */
   allowWrites: boolean;
@@ -30,7 +29,6 @@ export interface CoreConfig {
  */
 export interface PublicConfig {
   workspace: string;
-  defaultRepo?: string;
   logLevel: LogLevel;
   allowWrites: boolean;
   authMode: 'api-token' | 'legacy-app-password';
@@ -67,7 +65,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CoreConfig {
   const config: CoreConfig = {
     auth,
     workspace: workspace ?? '',
-    defaultRepo: trimmed(env.BITBUCKET_DEFAULT_REPO),
     logLevel,
     allowWrites: /^(1|true|yes)$/i.test(env.BITBUCKET_ALLOW_WRITES?.trim() ?? ''),
     usedLegacyAuth,
@@ -109,7 +106,6 @@ export function validateConfig(config: CoreConfig): void {
 export function publicConfig(config: CoreConfig): PublicConfig {
   return {
     workspace: config.workspace,
-    defaultRepo: config.defaultRepo,
     logLevel: config.logLevel,
     allowWrites: config.allowWrites,
     authMode: config.usedLegacyAuth ? 'legacy-app-password' : 'api-token',
