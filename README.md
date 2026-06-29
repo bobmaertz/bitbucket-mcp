@@ -28,29 +28,29 @@ Then ask: _"List the open PRs in acme/widgets"_ · _"Show the comments on PR #42
 
 Environment variables — auth is Basic `email:token`. `LOG_LEVEL` (default `info`) and `BITBUCKET_ALLOW_WRITES` (reserved, off) are optional. The deprecated `BITBUCKET_USERNAME` + `BITBUCKET_APP_PASSWORD` pair is accepted as a fallback. See [`.env.example`](./.env.example).
 
-| Variable | Notes |
-| --- | --- |
-| `BITBUCKET_WORKSPACE` | Default workspace ID (required). |
+| Variable                                  | Notes                                       |
+| ----------------------------------------- | ------------------------------------------- |
+| `BITBUCKET_WORKSPACE`                     | Default workspace ID (required).            |
 | `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN` | Required. Token minted at id.atlassian.com. |
 
 ## Tools
 
 Read-only. `workspace` defaults to `BITBUCKET_WORKSPACE`; repo-scoped tools require `repo`.
 
-| Tool | Key inputs |
-| --- | --- |
-| `bitbucket_list_repositories` | `workspace?`, `role?`, `query?`, `sort?`, `page?` |
-| `bitbucket_get_repository` | `workspace?`, `repo` |
+| Tool                           | Key inputs                                           |
+| ------------------------------ | ---------------------------------------------------- |
+| `bitbucket_list_repositories`  | `workspace?`, `role?`, `query?`, `sort?`, `page?`    |
+| `bitbucket_get_repository`     | `workspace?`, `repo`                                 |
 | `bitbucket_list_pull_requests` | `repo`, `state?` (default `OPEN`), `query?`, `page?` |
-| `bitbucket_get_pull_request` | `repo`, `id` |
-| `bitbucket_get_pr_commits` | `repo`, `id`, `page?` |
-| `bitbucket_get_pr_diff` | `repo`, `id`, `max_lines?` (default 200) |
-| `bitbucket_list_pr_comments` | `repo`, `id`, `page?` |
-| `bitbucket_get_comment` | `repo`, `pr_id`, `comment_id` |
-| `bitbucket_list_pr_tasks` | `repo`, `id`, `page?` |
-| `bitbucket_get_task` | `repo`, `pr_id`, `task_id` |
-| `bitbucket_list_branches` | `repo`, `query?`, `sort?`, `page?` |
-| `bitbucket_get_branch` | `repo`, `name` |
+| `bitbucket_get_pull_request`   | `repo`, `id`                                         |
+| `bitbucket_get_pr_commits`     | `repo`, `id`, `page?`                                |
+| `bitbucket_get_pr_diff`        | `repo`, `id`, `max_lines?` (default 200)             |
+| `bitbucket_list_pr_comments`   | `repo`, `id`, `page?`                                |
+| `bitbucket_get_comment`        | `repo`, `pr_id`, `comment_id`                        |
+| `bitbucket_list_pr_tasks`      | `repo`, `id`, `page?`                                |
+| `bitbucket_get_task`           | `repo`, `pr_id`, `task_id`                           |
+| `bitbucket_list_branches`      | `repo`, `query?`, `sort?`, `page?`                   |
+| `bitbucket_get_branch`         | `repo`, `name`                                       |
 
 `bitbucket_list_repositories` needs no args: omit `workspace` to enumerate the workspaces you belong to (optionally by `role`) and aggregate a page from each; pass `workspace` to page through one.
 

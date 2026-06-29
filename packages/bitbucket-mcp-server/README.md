@@ -24,12 +24,12 @@ No install needed — run it with `npx`. You need a Bitbucket Cloud (Atlassian) 
 
 ## Configuration
 
-| Variable | Required | Notes |
-| --- | --- | --- |
-| `BITBUCKET_WORKSPACE` | ✅ | Default workspace ID. |
-| `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN` | ✅ | Basic `email:token`. |
-| `BITBUCKET_USERNAME` + `BITBUCKET_APP_PASSWORD` | — | Deprecated app-password fallback. |
-| `LOG_LEVEL` | — | `debug`/`info`/`warn`/`error` (default `info`). |
+| Variable                                        | Required | Notes                                           |
+| ----------------------------------------------- | -------- | ----------------------------------------------- |
+| `BITBUCKET_WORKSPACE`                           | ✅       | Default workspace ID.                           |
+| `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN`       | ✅       | Basic `email:token`.                            |
+| `BITBUCKET_USERNAME` + `BITBUCKET_APP_PASSWORD` | —        | Deprecated app-password fallback.               |
+| `LOG_LEVEL`                                     | —        | `debug`/`info`/`warn`/`error` (default `info`). |
 
 ## Tools
 
