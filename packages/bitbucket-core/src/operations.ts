@@ -14,7 +14,6 @@ import {
   presentSchedule,
   presentRepository,
 } from './presenters.js';
-import type { WorkspaceRole } from '@bobmaertz/bitbucket-api';
 
 /**
  * A single token-sparse page of results. We return `has_more` + `page`
@@ -362,66 +361,42 @@ export interface RepositoriesPage {
 }
 
 /**
- * List repositories the authenticated user can access. Always returns a `repos`
- * array — empty when there are no matching repos.
+ * List repositories in a workspace. Always returns a `repos` array — empty when
+ * there are no matching repos.
  *
- * - With `workspace`: a single paged listing of that workspace
- *   (`GET /repositories/{workspace}`).
- * - Without `workspace`: enumerates the user's workspaces (`GET /workspaces`,
- *   optionally filtered by membership `role`) and aggregates one page of repos
- *   per workspace. The top-level cross-workspace `GET /repositories` listing was
- *   deprecated by Atlassian (CHANGE-2770), so this is the supported path.
+ * Scoped to a single workspace via `GET /repositories/{workspace}`. Callers that
+ * omit a workspace should resolve the configured default (`BITBUCKET_WORKSPACE`)
+ * before calling — there is no cross-workspace listing: Atlassian retired both
+ * `GET /repositories` and `GET /workspaces` under CHANGE-2770.
  */
 export async function listRepositories(
   api: BitbucketAPI,
   params: {
-    workspace?: string;
-    role?: WorkspaceRole;
+    workspace: string;
     page?: number;
     pagelen?: number;
     query?: string;
     sort?: string;
   }
 ): Promise<RepositoriesPage> {
+  if (!params.workspace) {
+    throw new Error('workspace is required');
+  }
+
   const pagelen = clampPagelen(params.pagelen);
-
-  if (params.workspace) {
-    const page = params.page ?? 1;
-    const response = await api.repositories.list(params.workspace, {
-      page,
-      pagelen,
-      q: params.query,
-      sort: params.sort,
-    });
-    return {
-      repos: (response.values ?? []).map(presentRepository),
-      page,
-      has_more: Boolean(response.next),
-      total: response.size,
-    };
-  }
-
-  // No workspace: discover accessible workspaces, then aggregate their repos.
-  const wsResponse = await api.workspaces.list({ role: params.role, pagelen });
-  const workspaces = wsResponse.values ?? [];
-
-  const repos: Record<string, unknown>[] = [];
-  // `has_more` is true if any workspace had additional repo pages we didn't
-  // fetch, or if there are more workspaces beyond this page — narrow to a
-  // specific workspace to page through fully.
-  let hasMore = Boolean(wsResponse.next);
-
-  for (const ws of workspaces) {
-    const response = await api.repositories.list(ws.slug, {
-      pagelen,
-      q: params.query,
-      sort: params.sort,
-    });
-    for (const repo of response.values ?? []) repos.push(presentRepository(repo));
-    if (response.next) hasMore = true;
-  }
-
-  return { repos, page: 1, has_more: hasMore, total: repos.length };
+  const page = params.page ?? 1;
+  const response = await api.repositories.list(params.workspace, {
+    page,
+    pagelen,
+    q: params.query,
+    sort: params.sort,
+  });
+  return {
+    repos: (response.values ?? []).map(presentRepository),
+    page,
+    has_more: Boolean(response.next),
+    total: response.size,
+  };
 }
 
 export async function getRepository(

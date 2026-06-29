@@ -72,7 +72,7 @@ function collectProps(name: string, seen = new Set<string>()): Set<string> {
 // deferred roadmap). Path keys must match the spec's templated paths verbatim.
 const REPO = '/repositories/{workspace}/{repo_slug}';
 const READ_ENDPOINTS: Array<[string, string]> = [
-  ['/workspaces', 'get'],
+  ['/user/workspaces', 'get'],
   ['/repositories/{workspace}', 'get'],
   [REPO, 'get'],
   [`${REPO}/pullrequests`, 'get'],
@@ -112,6 +112,28 @@ describe('request-surface contract', () => {
 
   it.each(ROADMAP_ENDPOINTS)('roadmap endpoint exists: %s [%s]', (path, method) => {
     expect(spec.paths[path]?.[method], `missing ${method} on ${path}`).toBeDefined();
+  });
+});
+
+describe('no-deprecated-endpoints guard', () => {
+  // Every endpoint we call must NOT be flagged `deprecated` in the upstream
+  // spec. This is the CHANGE-2770 regression guard: `GET /workspaces` and the
+  // cross-workspace `GET /repositories` are marked deprecated, so reintroducing
+  // either to our request surface fails here.
+  it.each([...READ_ENDPOINTS, ...ROADMAP_ENDPOINTS])(
+    '%s [%s] is not deprecated upstream',
+    (path, method) => {
+      const op = spec.paths[path]?.[method] as { deprecated?: boolean } | undefined;
+      expect(op, `missing ${method} on ${path}`).toBeDefined();
+      expect(op?.deprecated ?? false, `${method} ${path} is deprecated upstream`).toBe(false);
+    }
+  );
+
+  // Endpoints CHANGE-2770 retired must never appear in our request surface.
+  const RETIRED = ['/workspaces', '/repositories'];
+  it.each(RETIRED)('does not use the retired endpoint %s', (path) => {
+    const used = READ_ENDPOINTS.some(([p]) => p === path);
+    expect(used, `${path} was retired by CHANGE-2770 and must not be used`).toBe(false);
   });
 });
 

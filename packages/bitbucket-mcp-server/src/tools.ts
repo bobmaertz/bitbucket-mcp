@@ -31,7 +31,6 @@ import {
   type TargetDefaults,
   type PipelineStatus,
 } from '@bobmaertz/bitbucket-core';
-import type { WorkspaceRole } from '@bobmaertz/bitbucket-api';
 
 export interface ToolContext {
   api: BitbucketAPI;
@@ -70,17 +69,11 @@ export const readOnlyTools: Tool[] = [
   {
     name: 'bitbucket_list_repositories',
     description:
-      'List repositories the authenticated user can access. Omit "workspace" to list across all workspaces you belong to; pass "workspace" to scope to one. Lean summary per repo; "repos" is [] when none.',
+      'List repositories in a workspace. Omit "workspace" to use the configured BITBUCKET_WORKSPACE. Lean summary per repo; "repos" is [] when none.',
     inputSchema: schema({
       workspace: {
         type: 'string',
-        description:
-          'Workspace ID to scope to (optional; defaults to all workspaces you belong to)',
-      },
-      role: {
-        type: 'string',
-        enum: ['owner', 'collaborator', 'member'],
-        description: 'Workspace membership role filter, used only when no workspace given',
+        description: 'Workspace ID to scope to (optional; defaults to BITBUCKET_WORKSPACE)',
       },
       query: { type: 'string', description: 'Bitbucket query expression (optional)' },
       sort: { type: 'string', description: 'Sort field, e.g. -updated_on (optional)' },
@@ -314,8 +307,7 @@ export const handlers: Record<string, Handler> = {
   bitbucket_list_repositories: async (ctx, args) =>
     json(
       await listRepositories(ctx.api, {
-        workspace: args.workspace as string | undefined,
-        role: args.role as WorkspaceRole | undefined,
+        workspace: (args.workspace as string | undefined) || ctx.defaults.workspace,
         page: args.page as number | undefined,
         pagelen: args.pagelen as number | undefined,
         query: args.query as string | undefined,

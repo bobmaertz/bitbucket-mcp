@@ -39,7 +39,7 @@ Read-only. `workspace` defaults to `BITBUCKET_WORKSPACE`; repo-scoped tools requ
 
 | Tool                           | Key inputs                                           |
 | ------------------------------ | ---------------------------------------------------- |
-| `bitbucket_list_repositories`  | `workspace?`, `role?`, `query?`, `sort?`, `page?`    |
+| `bitbucket_list_repositories`  | `workspace?`, `query?`, `sort?`, `page?`             |
 | `bitbucket_get_repository`     | `workspace?`, `repo`                                 |
 | `bitbucket_list_pull_requests` | `repo`, `state?` (default `OPEN`), `query?`, `page?` |
 | `bitbucket_get_pull_request`   | `repo`, `id`                                         |
@@ -52,7 +52,7 @@ Read-only. `workspace` defaults to `BITBUCKET_WORKSPACE`; repo-scoped tools requ
 | `bitbucket_list_branches`      | `repo`, `query?`, `sort?`, `page?`                   |
 | `bitbucket_get_branch`         | `repo`, `name`                                       |
 
-`bitbucket_list_repositories` needs no args: omit `workspace` to enumerate the workspaces you belong to (optionally by `role`) and aggregate a page from each; pass `workspace` to page through one.
+`bitbucket_list_repositories` needs no args: omit `workspace` to list the configured `BITBUCKET_WORKSPACE`, or pass `workspace` to scope to another. There is no cross-workspace listing — Atlassian retired both `GET /repositories` and `GET /workspaces` under CHANGE-2770.
 
 ## Development
 
