@@ -1,9 +1,10 @@
-import { BitbucketAPI, NotFoundError } from '@bobmaertz/bitbucket-api';
-import type { PaginatedResponse } from '@bobmaertz/bitbucket-api';
+import { BitbucketAPI, NotFoundError, PaginationHelper } from '@bobmaertz/bitbucket-api';
+import type { PaginatedResponse, PullRequest, PullRequestState } from '@bobmaertz/bitbucket-api';
 import type { CoreConfig } from './config.js';
 import {
   presentPullRequest,
   presentPullRequestSummary,
+  presentUserPullRequestSummary,
   presentComment,
   presentTask,
   presentBranch,
@@ -36,9 +37,25 @@ export interface ListParams {
   sort?: string;
 }
 
+/**
+ * An aggregated result that followed pagination internally instead of returning
+ * one page. `truncated`/`has_more` signal that the `max_pages` cap was hit
+ * before the results were exhausted (no silent truncation); `pages_fetched`
+ * lets a caller raise `max_pages` if it needs more.
+ */
+export interface AggregatedPage<T> {
+  items: T[];
+  pages_fetched: number;
+  has_more: boolean;
+  truncated: boolean;
+  total?: number;
+}
+
 const DEFAULT_PAGELEN = 25;
 /** Bitbucket's hard server-side cap on items per page. */
 const MAX_PAGELEN = 100;
+/** Default safety cap on pages fetched when aggregating a full result set. */
+const DEFAULT_MAX_PAGES = 10;
 
 /**
  * Resolve a caller-supplied `pagelen` to a sane value: default when omitted,
@@ -103,6 +120,90 @@ export async function listPullRequests(
     sort: params.sort,
   });
   return toPage(response, presentPullRequestSummary, page);
+}
+
+/**
+ * Resolve the `selected_user` path segment for the workspace-user PR listing.
+ * When `user` is omitted we resolve the authenticated account via `GET /user`
+ * (preferring `account_id`, falling back to `uuid`). A bare username is
+ * unsupported by Bitbucket (removed) and will surface as the endpoint's own
+ * NotFound error rather than being guessed at here.
+ */
+async function resolveSelectedUser(api: BitbucketAPI, user?: string): Promise<string> {
+  const trimmed = user?.trim();
+  if (trimmed) return trimmed;
+
+  const me = await api.users.getCurrent();
+  const id = me.account_id || me.uuid;
+  if (!id) {
+    throw new Error('Could not resolve the authenticated user from GET /user');
+  }
+  return id;
+}
+
+/**
+ * List every pull request a user authored across an entire workspace in a single
+ * aggregated, auto-paginated call — the efficient replacement for iterating each
+ * repo. Defaults to OPEN PRs sorted newest-updated first (`-updated_on`). Follows
+ * Bitbucket's opaque cursor up to `maxPages`, reporting `truncated` if the cap is
+ * reached. Omit `user` to list the authenticated user's ("my") PRs.
+ */
+export async function listUserPullRequests(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    user?: string;
+    state?: PullRequestState;
+    sort?: string;
+    pagelen?: number;
+    maxPages?: number;
+    query?: string;
+  }
+): Promise<AggregatedPage<Record<string, unknown>>> {
+  if (!params.workspace) {
+    throw new Error('workspace is required');
+  }
+
+  const selectedUser = await resolveSelectedUser(api, params.user);
+  const pagelen = clampPagelen(params.pagelen ?? MAX_PAGELEN);
+  const sort = params.sort ?? '-updated_on';
+  const state = params.state ?? 'OPEN';
+  const maxPages = Number.isFinite(params.maxPages)
+    ? Math.max(1, Math.floor(params.maxPages as number))
+    : DEFAULT_MAX_PAGES;
+
+  let truncated = false;
+  let pagesFetched = 0;
+  let lastSize: number | undefined;
+
+  const items = await PaginationHelper.getAllPages<PullRequest>(
+    async (nextUrl) => {
+      const response = await api.pullRequests.listByWorkspaceUser(params.workspace, selectedUser, {
+        state,
+        pagelen,
+        q: params.query,
+        sort,
+        nextUrl,
+      });
+      pagesFetched++;
+      lastSize = response.size ?? lastSize;
+      return response;
+    },
+    {
+      maxPages,
+      onTruncate: () => {
+        truncated = true;
+      },
+    }
+  );
+
+  return {
+    items: items.map(presentUserPullRequestSummary),
+    pages_fetched: pagesFetched,
+    has_more: truncated,
+    truncated,
+    total: lastSize,
+  };
 }
 
 export async function getPullRequest(

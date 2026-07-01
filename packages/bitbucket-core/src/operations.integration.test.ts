@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { BitbucketAPI } from '@bobmaertz/bitbucket-api';
 import {
   listPullRequests,
+  listUserPullRequests,
   getPullRequestDiff,
   listBranches,
   listRepositories,
@@ -84,6 +85,45 @@ describe('operations (HTTP integration)', () => {
         ].join('\n');
         res.writeHead(200, { 'content-type': 'text/plain' });
         res.end(diff);
+        return;
+      }
+
+      // Authenticated user lookup, used to resolve "my" PRs to a selected_user.
+      if (url === '/user') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({ account_id: 'acc-1', uuid: '{me}', display_name: 'Jo', type: 'user' })
+        );
+        return;
+      }
+
+      // Workspace-scoped PRs authored by a user — two pages to exercise the
+      // opaque-cursor aggregation across the real axios stack.
+      if (url.startsWith('/workspaces/acme/pullrequests/')) {
+        const onPageTwo = url.includes('page=2');
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            size: 2,
+            values: [
+              {
+                id: onPageTwo ? 43 : 42,
+                title: onPageTwo ? 'Second' : 'First',
+                state: 'OPEN',
+                author: { display_name: 'Jo' },
+                source: { branch: { name: 'feature/x' } },
+                destination: {
+                  branch: { name: 'main' },
+                  repository: { full_name: onPageTwo ? 'acme/gadgets' : 'acme/widgets' },
+                },
+                comment_count: 0,
+                task_count: 0,
+                updated_on: '2026-01-01T00:00:00Z',
+              },
+            ],
+            next: onPageTwo ? undefined : `${baseURL}/workspaces/acme/pullrequests/acc-1?page=2`,
+          })
+        );
         return;
       }
 
@@ -181,6 +221,31 @@ describe('operations (HTTP integration)', () => {
       false
     );
     expect(requestedPaths.some((p) => p.startsWith('/user/workspaces'))).toBe(false);
+  });
+
+  it('aggregates a user’s workspace PRs across pages, resolving "me" and tagging repos', async () => {
+    requestedPaths.length = 0;
+    const result = await listUserPullRequests(api(), { workspace: 'acme' });
+
+    // Followed the opaque cursor to page 2, so both repos' PRs are present.
+    expect(result.pages_fetched).toBe(2);
+    expect(result.truncated).toBe(false);
+    expect(result.has_more).toBe(false);
+    expect(result.items.map((i) => i.repo)).toEqual(['acme/widgets', 'acme/gadgets']);
+
+    // Resolved the authenticated account and hit the workspace-user endpoint.
+    expect(requestedPaths).toContain('/user');
+    expect(requestedPaths.some((p) => p.startsWith('/workspaces/acme/pullrequests/acc-1'))).toBe(
+      true
+    );
+  });
+
+  it('reports truncation when the max_pages cap is hit before exhausting results', async () => {
+    const result = await listUserPullRequests(api(), { workspace: 'acme', maxPages: 1 });
+    expect(result.pages_fetched).toBe(1);
+    expect(result.truncated).toBe(true);
+    expect(result.has_more).toBe(true);
+    expect(result.items).toHaveLength(1);
   });
 
   it('shortens branch hashes', async () => {

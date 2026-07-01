@@ -7,6 +7,7 @@ import { BitbucketClient, ClientConfig } from './client.js';
 import { PullRequestsResource } from './resources/pullrequests.js';
 import { RepositoriesResource } from './resources/repositories.js';
 import { WorkspacesResource } from './resources/workspaces.js';
+import { UsersResource } from './resources/users.js';
 import { CommentsResource } from './resources/comments.js';
 import { TasksResource } from './resources/tasks.js';
 import { BranchesResource } from './resources/branches.js';
@@ -21,6 +22,7 @@ export class BitbucketAPI {
   public pullRequests: PullRequestsResource;
   public repositories: RepositoriesResource;
   public workspaces: WorkspacesResource;
+  public users: UsersResource;
   public comments: CommentsResource;
   public tasks: TasksResource;
   public branches: BranchesResource;
@@ -33,6 +35,7 @@ export class BitbucketAPI {
     this.pullRequests = new PullRequestsResource(this.client);
     this.repositories = new RepositoriesResource(this.client);
     this.workspaces = new WorkspacesResource(this.client);
+    this.users = new UsersResource(this.client);
     this.comments = new CommentsResource(this.client);
     this.tasks = new TasksResource(this.client);
     this.branches = new BranchesResource(this.client);

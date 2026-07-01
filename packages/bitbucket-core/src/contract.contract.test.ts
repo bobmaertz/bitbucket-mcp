@@ -72,7 +72,9 @@ function collectProps(name: string, seen = new Set<string>()): Set<string> {
 // deferred roadmap). Path keys must match the spec's templated paths verbatim.
 const REPO = '/repositories/{workspace}/{repo_slug}';
 const READ_ENDPOINTS: Array<[string, string]> = [
+  ['/user', 'get'],
   ['/user/workspaces', 'get'],
+  ['/workspaces/{workspace}/pullrequests/{selected_user}', 'get'],
   ['/repositories/{workspace}', 'get'],
   [REPO, 'get'],
   [`${REPO}/pullrequests`, 'get'],

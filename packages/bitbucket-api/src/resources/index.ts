@@ -5,6 +5,7 @@
 export * from './pullrequests.js';
 export * from './repositories.js';
 export * from './workspaces.js';
+export * from './users.js';
 export * from './comments.js';
 export * from './tasks.js';
 export * from './branches.js';
