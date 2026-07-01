@@ -11,6 +11,7 @@ import type { BitbucketAPI } from '@bobmaertz/bitbucket-api';
 import {
   resolveTarget,
   listPullRequests,
+  listUserPullRequests,
   getPullRequest,
   getPullRequestCommits,
   getPullRequestDiff,
@@ -98,6 +99,34 @@ export const readOnlyTools: Tool[] = [
       query: { type: 'string', description: 'Bitbucket query expression (optional)' },
       sort: { type: 'string', description: 'Sort field, e.g. -updated_on (optional)' },
       ...paging,
+    }),
+  },
+  {
+    name: 'bitbucket_list_user_pull_requests',
+    description:
+      'List ALL pull requests authored by a user across an entire workspace in one call — no per-repo iteration. Omit "user" for the authenticated account ("my" PRs); omit "workspace" for BITBUCKET_WORKSPACE. Defaults to OPEN, sorted newest-updated first (-updated_on). Follows pagination automatically up to max_pages and sets "truncated" if the cap is hit. Does NOT include PRs where the user is only a reviewer.',
+    inputSchema: schema({
+      workspace: {
+        type: 'string',
+        description: 'Workspace ID to scope to (optional; defaults to BITBUCKET_WORKSPACE)',
+      },
+      user: {
+        type: 'string',
+        description:
+          'Account UUID in braces (e.g. {1234-...}) or Atlassian account_id. Omit for the authenticated user. Bare usernames are NOT supported.',
+      },
+      state: {
+        type: 'string',
+        enum: ['OPEN', 'MERGED', 'DECLINED', 'SUPERSEDED'],
+        description: 'PR state filter (default OPEN)',
+      },
+      sort: { type: 'string', description: 'Sort field (default -updated_on)' },
+      query: { type: 'string', description: 'Bitbucket query expression (optional)' },
+      pagelen: {
+        type: 'number',
+        description: 'Items per API page during aggregation (max 100, default 100)',
+      },
+      max_pages: { type: 'number', description: 'Safety cap on pages fetched (default 10)' },
     }),
   },
   {
@@ -325,6 +354,19 @@ export const handlers: Record<string, Handler> = {
       await listPullRequests(ctx.api, {
         ...listArgs(ctx, args),
         state: args.state as 'OPEN' | 'MERGED' | 'DECLINED' | 'SUPERSEDED' | undefined,
+      })
+    ),
+
+  bitbucket_list_user_pull_requests: async (ctx, args) =>
+    json(
+      await listUserPullRequests(ctx.api, {
+        workspace: (args.workspace as string | undefined) || ctx.defaults.workspace,
+        user: args.user as string | undefined,
+        state: args.state as 'OPEN' | 'MERGED' | 'DECLINED' | 'SUPERSEDED' | undefined,
+        sort: args.sort as string | undefined,
+        query: args.query as string | undefined,
+        pagelen: args.pagelen as number | undefined,
+        maxPages: args.max_pages as number | undefined,
       })
     ),
 

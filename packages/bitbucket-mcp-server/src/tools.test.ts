@@ -34,6 +34,7 @@ describe('read-only tool surface', () => {
         'bitbucket_list_pull_requests',
         'bitbucket_list_repositories',
         'bitbucket_list_schedules',
+        'bitbucket_list_user_pull_requests',
       ].sort()
     );
   });
@@ -83,6 +84,68 @@ describe('handlers', () => {
     expect(text).not.toContain('\n'); // compact, not pretty-printed
     const parsed = JSON.parse(text);
     expect(parsed.items[0]).toMatchObject({ id: 1, source_branch: 'f', dest_branch: 'main' });
+  });
+
+  it('lists a user PRs across a workspace, defaulting to me + newest-updated', async () => {
+    const getCurrent = vi.fn().mockResolvedValue({ account_id: 'acc-1', uuid: '{me}' });
+    const listByWorkspaceUser = vi.fn().mockResolvedValue({
+      size: 1,
+      next: undefined,
+      values: [
+        {
+          id: 7,
+          title: 'PR',
+          state: 'OPEN',
+          author: { display_name: 'Jo' },
+          source: { branch: { name: 'f' } },
+          destination: { branch: { name: 'main' }, repository: { full_name: 'acme/widgets' } },
+          comment_count: 0,
+          task_count: 0,
+        },
+      ],
+    });
+    const ctx = {
+      api: {
+        users: { getCurrent },
+        pullRequests: { listByWorkspaceUser },
+      } as unknown as BitbucketAPI,
+      defaults: { workspace: 'acme' },
+      logger: createLogger('error'),
+    };
+
+    const result = await handlers.bitbucket_list_user_pull_requests(ctx, {});
+
+    // Defaulted the selected_user to the authenticated account and sorted newest-updated.
+    expect(getCurrent).toHaveBeenCalledOnce();
+    expect(listByWorkspaceUser).toHaveBeenCalledWith(
+      'acme',
+      'acc-1',
+      expect.objectContaining({ state: 'OPEN', sort: '-updated_on' })
+    );
+
+    const text = textOf(result);
+    expect(text).not.toContain('\n'); // compact
+    const parsed = JSON.parse(text);
+    expect(parsed).toMatchObject({ truncated: false, has_more: false, pages_fetched: 1 });
+    expect(parsed.items[0]).toMatchObject({ id: 7, repo: 'acme/widgets' });
+  });
+
+  it('uses an explicit user without calling GET /user', async () => {
+    const getCurrent = vi.fn();
+    const listByWorkspaceUser = vi.fn().mockResolvedValue({ size: 0, next: undefined, values: [] });
+    const ctx = {
+      api: {
+        users: { getCurrent },
+        pullRequests: { listByWorkspaceUser },
+      } as unknown as BitbucketAPI,
+      defaults: { workspace: 'acme' },
+      logger: createLogger('error'),
+    };
+
+    await handlers.bitbucket_list_user_pull_requests(ctx, { user: '{someone}' });
+
+    expect(getCurrent).not.toHaveBeenCalled();
+    expect(listByWorkspaceUser).toHaveBeenCalledWith('acme', '{someone}', expect.any(Object));
   });
 
   // CHANGE-2770 regression: omitting `workspace` must scope to the configured

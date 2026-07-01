@@ -80,6 +80,18 @@ export function presentPullRequestSummary(pr: PullRequest): Record<string, unkno
   });
 }
 
+/**
+ * PR summary for cross-repo listings. Adds the source repo `full_name` so an
+ * LLM can tell which repository each PR belongs to when results span a whole
+ * workspace. `compact()` drops `repo` when the repository is absent.
+ */
+export function presentUserPullRequestSummary(pr: PullRequest): Record<string, unknown> {
+  return compact({
+    ...presentPullRequestSummary(pr),
+    repo: pr.destination?.repository?.full_name,
+  });
+}
+
 /** Rich PR shape for single-PR views. */
 export function presentPullRequest(pr: PullRequest): Record<string, unknown> {
   return compact({

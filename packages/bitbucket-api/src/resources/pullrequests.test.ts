@@ -70,6 +70,36 @@ describe('PullRequestsResource', () => {
     });
   });
 
+  describe('listByWorkspaceUser', () => {
+    it('hits the workspace-user endpoint with an encoded selected_user', async () => {
+      (mockClient.get as any).mockResolvedValue({ values: [], size: 0 });
+
+      await resource.listByWorkspaceUser('acme', '{1234-abcd}', {
+        state: 'OPEN',
+        pagelen: 100,
+        sort: '-updated_on',
+      });
+
+      const path = (mockClient.get as any).mock.calls[0][0] as string;
+      expect(path.startsWith('/workspaces/acme/pullrequests/')).toBe(true);
+      // Braces of the UUID must be percent-encoded so they can't alter the path.
+      expect(path).toContain('%7B1234-abcd%7D');
+      expect(path).not.toContain('{1234-abcd}');
+      expect(path).toContain('state=OPEN');
+      expect(path).toContain('pagelen=100');
+      expect(path).toContain('sort=-updated_on');
+    });
+
+    it('follows a verbatim next URL without re-encoding or prefixing', async () => {
+      (mockClient.get as any).mockResolvedValue({ values: [], size: 0 });
+      const nextUrl = 'https://api.bitbucket.org/2.0/workspaces/acme/pullrequests/x?page=2';
+
+      await resource.listByWorkspaceUser('acme', 'x', { nextUrl });
+
+      expect(mockClient.get).toHaveBeenCalledWith(nextUrl);
+    });
+  });
+
   describe('get', () => {
     it('should get a specific pull request', async () => {
       const mockPR = { id: 123, title: 'Test PR' };

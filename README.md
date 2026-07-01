@@ -37,22 +37,25 @@ Environment variables — auth is Basic `email:token`. `LOG_LEVEL` (default `inf
 
 Read-only. `workspace` defaults to `BITBUCKET_WORKSPACE`; repo-scoped tools require `repo`.
 
-| Tool                           | Key inputs                                           |
-| ------------------------------ | ---------------------------------------------------- |
-| `bitbucket_list_repositories`  | `workspace?`, `query?`, `sort?`, `page?`             |
-| `bitbucket_get_repository`     | `workspace?`, `repo`                                 |
-| `bitbucket_list_pull_requests` | `repo`, `state?` (default `OPEN`), `query?`, `page?` |
-| `bitbucket_get_pull_request`   | `repo`, `id`                                         |
-| `bitbucket_get_pr_commits`     | `repo`, `id`, `page?`                                |
-| `bitbucket_get_pr_diff`        | `repo`, `id`, `max_lines?` (default 200)             |
-| `bitbucket_list_pr_comments`   | `repo`, `id`, `page?`                                |
-| `bitbucket_get_comment`        | `repo`, `pr_id`, `comment_id`                        |
-| `bitbucket_list_pr_tasks`      | `repo`, `id`, `page?`                                |
-| `bitbucket_get_task`           | `repo`, `pr_id`, `task_id`                           |
-| `bitbucket_list_branches`      | `repo`, `query?`, `sort?`, `page?`                   |
-| `bitbucket_get_branch`         | `repo`, `name`                                       |
+| Tool                                | Key inputs                                                                       |
+| ----------------------------------- | -------------------------------------------------------------------------------- |
+| `bitbucket_list_repositories`       | `workspace?`, `query?`, `sort?`, `page?`                                         |
+| `bitbucket_get_repository`          | `workspace?`, `repo`                                                             |
+| `bitbucket_list_pull_requests`      | `repo`, `state?` (default `OPEN`), `query?`, `page?`                             |
+| `bitbucket_list_user_pull_requests` | `workspace?`, `user?` (default: me), `state?`, `sort?`, `pagelen?`, `max_pages?` |
+| `bitbucket_get_pull_request`        | `repo`, `id`                                                                     |
+| `bitbucket_get_pr_commits`          | `repo`, `id`, `page?`                                                            |
+| `bitbucket_get_pr_diff`             | `repo`, `id`, `max_lines?` (default 200)                                         |
+| `bitbucket_list_pr_comments`        | `repo`, `id`, `page?`                                                            |
+| `bitbucket_get_comment`             | `repo`, `pr_id`, `comment_id`                                                    |
+| `bitbucket_list_pr_tasks`           | `repo`, `id`, `page?`                                                            |
+| `bitbucket_get_task`                | `repo`, `pr_id`, `task_id`                                                       |
+| `bitbucket_list_branches`           | `repo`, `query?`, `sort?`, `page?`                                               |
+| `bitbucket_get_branch`              | `repo`, `name`                                                                   |
 
 `bitbucket_list_repositories` needs no args: omit `workspace` to list the configured `BITBUCKET_WORKSPACE`, or pass `workspace` to scope to another. There is no cross-workspace listing — Atlassian retired both `GET /repositories` and `GET /workspaces` under CHANGE-2770.
+
+`bitbucket_list_user_pull_requests` lists **all pull requests authored by a user across a whole workspace in one aggregated call** — no more listing every repo and querying each. It auto-follows pagination (up to `max_pages`, default 10) and sorts newest-updated first (`-updated_on`). Omit `user` for the authenticated account ("my" PRs); otherwise `user` must be an account UUID (`{…}`) or Atlassian `account_id` — bare usernames were removed by Bitbucket. It covers **authored** PRs only; reviewer-only involvement isn't included. Backed by `GET /workspaces/{workspace}/pullrequests/{selected_user}`.
 
 ## Development
 
