@@ -141,10 +141,7 @@ export const readOnlyTools: Tool[] = [
           description: 'Workspace ID to scope to (optional; defaults to BITBUCKET_WORKSPACE)',
         },
         users: {
-          oneOf: [
-            { type: 'string' },
-            { type: 'array', items: { type: 'string' }, minItems: 1 },
-          ],
+          oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' }, minItems: 1 }],
           description:
             'One account UUID/account_id, or an array of them. Natural names are NOT accepted here.',
         },

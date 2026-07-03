@@ -332,9 +332,9 @@ describe('operations (HTTP integration)', () => {
   });
 
   it('errors clearly when a natural name is ambiguous', async () => {
-    await expect(
-      listUserPullRequests(api(), { workspace: 'acme', user: 'Dup' })
-    ).rejects.toThrow(/ambiguous/);
+    await expect(listUserPullRequests(api(), { workspace: 'acme', user: 'Dup' })).rejects.toThrow(
+      /ambiguous/
+    );
   });
 
   it('uses an id-shaped user verbatim, without a members lookup', async () => {
@@ -342,9 +342,9 @@ describe('operations (HTTP integration)', () => {
     await listUserPullRequests(api(), { workspace: 'acme', user: '{bob}' });
     // Fast path: no /members listing, straight to the PR endpoint with the id.
     expect(requestedPaths.some((p) => p.startsWith('/workspaces/acme/members'))).toBe(false);
-    expect(requestedPaths.some((p) => p.startsWith('/workspaces/acme/pullrequests/%7Bbob%7D'))).toBe(
-      true
-    );
+    expect(
+      requestedPaths.some((p) => p.startsWith('/workspaces/acme/pullrequests/%7Bbob%7D'))
+    ).toBe(true);
   });
 
   it('shortens branch hashes', async () => {
