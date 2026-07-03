@@ -44,10 +44,15 @@ jobs:
       contents: write # push the version-bump commit and tag
       id-token: write # OIDC token for npm Trusted Publishing + provenance
 
-    # Optional approval gate: create a GitHub Environment named "release" with
-    # required reviewers, then uncomment the next line to require sign-off
-    # before anything is published to npm.
-    # environment: release
+    # Maintainer-only gate. This job runs in the "release" environment; the
+    # publish pauses until a required reviewer approves it. Configure the gate
+    # once in GitHub (see the setup notes at the bottom of this file):
+    #   Settings -> Environments -> release
+    #     - Required reviewers: the maintainers allowed to release
+    #     - Deployment branches: "Selected" -> main (only release from main)
+    # Until reviewers are added the environment exists but does not gate, so
+    # add them before the first real release.
+    environment: release
 
     steps:
       - name: Checkout code
@@ -190,3 +195,15 @@ jobs:
 #   3. Branch protection: pushing the bump commit + tag uses GITHUB_TOKEN. If
 #      `main` is protected, allow `github-actions[bot]` to bypass, or route the
 #      version bump through a PR instead of pushing to the branch directly.
+#
+# Restricting who can release
+# ---------------------------
+#   - Triggering `workflow_dispatch` already requires repo Write access, so
+#     read/triage users and the public cannot run this workflow.
+#   - To require maintainer approval on every release, create the "release"
+#     environment (Settings -> Environments -> release) and add the maintainers
+#     under "Required reviewers". The job above targets that environment, so the
+#     publish pauses until one of them approves. Set "Deployment branches" to
+#     "Selected" -> main so releases can only run from main.
+#   - Scope the npm Trusted Publisher (step 2) to the "release" environment so
+#     npm's OIDC only trusts runs that cleared the approval gate.
