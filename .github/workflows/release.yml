@@ -1,0 +1,192 @@
+name: Release
+
+# Manually-triggered, secure release of the published npm package
+# `@bobmaertz/bitbucket-mcp`. Gates on the same quality checks as CI, bumps +
+# tags the version, then publishes to npm using OIDC Trusted Publishing (no
+# long-lived token) with a signed provenance attestation.
+#
+# One-time setup required for token-free publishing — see the notes at the
+# bottom of this file.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Semver bump to apply'
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: 'Rehearse only: run all checks and `npm publish --dry-run`, but do not commit, tag, or publish'
+        type: boolean
+        required: false
+        default: false
+
+# Least privilege by default; the release job elevates what it needs.
+permissions:
+  contents: read
+
+# Never let two releases run at once; do not cancel an in-flight publish.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, version & publish
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # push the version-bump commit and tag
+      id-token: write # OIDC token for npm Trusted Publishing + provenance
+
+    # Optional approval gate: create a GitHub Environment named "release" with
+    # required reviewers, then uncomment the next line to require sign-off
+    # before anything is published to npm.
+    # environment: release
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # Full history so tags and the bump commit apply cleanly.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm for OIDC Trusted Publishing
+        # Node 20 ships an npm older than 11.5.1, which is required for OIDC
+        # trusted publishing + automatic provenance. Pin to a known-good line.
+        run: npm install -g npm@^11.5.1
+
+      - name: Install dependencies
+        run: npm ci
+
+      # --- Quality gates: mirror .github/workflows/ci.yml. Nothing publishes
+      #     unless all of these pass. ---
+      - name: Security checks
+        run: npm run security:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Test
+        run: npm test
+
+      - name: Contract tests
+        run: npm run test:contract
+
+      - name: Build
+        run: npm run build
+
+      # --- Version bump. Keep every workspace + the root in sync, as the repo
+      #     is today, so the published version and the repo agree. ---
+      - name: Bump version
+        id: bump
+        run: |
+          set -euo pipefail
+          # Bump the published server package and read back the new version.
+          npm version "${{ inputs.release_type }}" \
+            --no-git-tag-version \
+            --workspace packages/bitbucket-mcp-server
+          new_version="$(node -p "require('./packages/bitbucket-mcp-server/package.json').version")"
+
+          # Keep the remaining workspaces + root uniform at the same version.
+          npm version "$new_version" --no-git-tag-version \
+            --workspace packages/bitbucket-api \
+            --workspace packages/bitbucket-core
+          npm version "$new_version" --no-git-tag-version --allow-same-version
+
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+          echo "Bumped to $new_version"
+
+      - name: Commit, tag & push
+        if: ${{ inputs.dry_run == false }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.bump.outputs.version }}"
+          tag="v${version}"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git add package.json package-lock.json packages/*/package.json
+          git commit -m "chore(release): ${tag}"
+          git tag -a "${tag}" -m "Release ${tag}"
+
+          # Push commit then tag, with simple exponential backoff on network errors.
+          for target in "HEAD:${GITHUB_REF_NAME}" "${tag}"; do
+            n=0
+            until git push origin "${target}"; do
+              n=$((n + 1))
+              if [ "$n" -ge 4 ]; then
+                echo "Push of ${target} failed after ${n} attempts" >&2
+                exit 1
+              fi
+              sleep $((2 ** n))
+            done
+          done
+
+      - name: Publish to npm (provenance via OIDC)
+        run: |
+          set -euo pipefail
+          extra=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            extra="--dry-run"
+          fi
+          npm publish \
+            --provenance \
+            --access public \
+            --workspace packages/bitbucket-mcp-server \
+            $extra
+
+      - name: Summary
+        if: always()
+        run: |
+          version="${{ steps.bump.outputs.version }}"
+          {
+            echo "## Release summary"
+            echo ""
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              echo "**Dry run** — no commit, tag, or publish happened."
+              echo ""
+              echo "- Would-be version: \`${version}\`"
+              echo "- Bump: \`${{ inputs.release_type }}\`"
+            else
+              echo "- Published: \`@bobmaertz/bitbucket-mcp@${version}\`"
+              echo "- Tag: \`v${version}\`"
+              echo "- Provenance: https://www.npmjs.com/package/@bobmaertz/bitbucket-mcp/v/${version}#provenance"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+# ---------------------------------------------------------------------------
+# One-time setup for token-free (OIDC) publishing
+# ---------------------------------------------------------------------------
+# npm Trusted Publishing is configured per *existing* package, so the very
+# first publish is a bootstrap:
+#
+#   1. Bootstrap the package on npm (once): publish the current version
+#      manually — `cd packages/bitbucket-mcp-server && npm publish --access public`
+#      — or temporarily add an `NPM_TOKEN` repo secret and reference it via
+#      `NODE_AUTH_TOKEN` on the publish step for a single run.
+#   2. On npmjs.com → the package's Settings → Trusted Publishing → add a
+#      GitHub Actions publisher: repo `bobmaertz/bitbucket-mcp`, workflow
+#      `release.yml` (and the `release` environment if you enable one above).
+#      After this, every run publishes token-free with provenance.
+#   3. Branch protection: pushing the bump commit + tag uses GITHUB_TOKEN. If
+#      `main` is protected, allow `github-actions[bot]` to bypass, or route the
+#      version bump through a PR instead of pushing to the branch directly.
