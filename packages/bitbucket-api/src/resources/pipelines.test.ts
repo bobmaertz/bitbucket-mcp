@@ -90,6 +90,29 @@ describe('PipelinesResource', () => {
       );
     });
   });
+
+  describe('test reports', () => {
+    it('targets the step test_reports summary', async () => {
+      await resource.getTestReport('ws', 'repo', '7', '{s}');
+      expect(mockClient.get).toHaveBeenCalledWith(
+        '/repositories/ws/repo/pipelines/7/steps/%7Bs%7D/test_reports'
+      );
+    });
+
+    it('targets the test_cases collection', async () => {
+      await resource.getTestCases('ws', 'repo', '7', '{s}');
+      expect(mockClient.get).toHaveBeenCalledWith(
+        '/repositories/ws/repo/pipelines/7/steps/%7Bs%7D/test_reports/test_cases'
+      );
+    });
+
+    it('targets a case’s test_case_reasons', async () => {
+      await resource.getTestCaseReasons('ws', 'repo', '7', '{s}', '{tc}');
+      expect(mockClient.get).toHaveBeenCalledWith(
+        '/repositories/ws/repo/pipelines/7/steps/%7Bs%7D/test_reports/test_cases/%7Btc%7D/test_case_reasons'
+      );
+    });
+  });
 });
 
 describe('pipelineRef', () => {

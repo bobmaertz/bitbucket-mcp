@@ -24,6 +24,9 @@ import {
   presentDiffstat,
   presentTag,
   presentFileHistoryEntry,
+  presentCommitStatus,
+  presentPrActivity,
+  presentTestCase,
   objectFields,
   listFields,
   PR_SUMMARY_FIELDS,
@@ -43,6 +46,9 @@ import {
   DIFFSTAT_FIELDS,
   TAG_FIELDS,
   FILE_HISTORY_FIELDS,
+  COMMIT_STATUS_FIELDS,
+  PR_ACTIVITY_FIELDS,
+  TEST_CASE_FIELDS,
 } from './presenters.js';
 
 /**
@@ -941,4 +947,196 @@ export async function getTag(
     fields: objectFields(TAG_FIELDS),
   });
   return presentTag(tag);
+}
+
+// PR & CI depth ---------------------------------------------------------------
+
+/** Get the per-file diffstat for a pull request — a cheap "what changed". */
+export async function getPullRequestDiffstat(
+  api: BitbucketAPI,
+  params: ListParams & { id: number }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.pullRequests.getDiffstat(params.workspace, params.repo, params.id, {
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    fields: listFields(DIFFSTAT_FIELDS),
+  });
+  return toPage(response, presentDiffstat, page);
+}
+
+/** List the CI/build statuses reported against a pull request. */
+export async function listPullRequestStatuses(
+  api: BitbucketAPI,
+  params: ListParams & { id: number }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.pullRequests.getStatuses(params.workspace, params.repo, params.id, {
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    q: params.query,
+    sort: params.sort,
+    fields: listFields(COMMIT_STATUS_FIELDS),
+  });
+  return toPage(response, presentCommitStatus, page);
+}
+
+/** List the CI/build statuses reported against a commit. */
+export async function listCommitStatuses(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; commit: string; page?: number; pagelen?: number }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.commits.getStatuses(params.workspace, params.repo, params.commit, {
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    fields: listFields(COMMIT_STATUS_FIELDS),
+  });
+  return toPage(response, presentCommitStatus, page);
+}
+
+/** Get the activity log (updates, approvals, comments) for a pull request. */
+export async function getPullRequestActivity(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; id: number; page?: number; pagelen?: number }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.pullRequests.getActivity(params.workspace, params.repo, params.id, {
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    fields: listFields(PR_ACTIVITY_FIELDS),
+  });
+  return toPage(response, presentPrActivity, page);
+}
+
+/** List the pull requests that contain a commit ("which PR introduced this?"). */
+export async function listCommitPullRequests(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; commit: string; page?: number; pagelen?: number }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.commits.getPullRequests(params.workspace, params.repo, params.commit, {
+    page,
+    pagelen: clampPagelen(params.pagelen, PR_MAX_PAGELEN),
+    fields: listFields(PR_SUMMARY_FIELDS),
+  });
+  return toPage(response, presentPullRequestSummary, page);
+}
+
+// Test reports ----------------------------------------------------------------
+
+/** Test-case statuses that count as failures worth surfacing. */
+const FAILING_STATUSES = new Set(['FAILED', 'ERROR']);
+/** Cap on per-case reason lookups so a big failure set can't fan out unbounded. */
+const MAX_REASON_LOOKUPS = 10;
+/** Cap on the reason text kept per failing case. */
+const MAX_REASON_CHARS = 2000;
+
+export interface TestReportSummary {
+  summary: {
+    total: number;
+    passed: number;
+    failed: number;
+    error: number;
+    skipped: number;
+  };
+  failing: Record<string, unknown>[];
+  /** True if more failing cases exist than had their reasons fetched. */
+  reasons_truncated?: boolean;
+  /** Set when the step has no test report at all. */
+  no_report?: boolean;
+}
+
+function pickNumber(...values: Array<number | undefined>): number {
+  for (const v of values) {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+  }
+  return 0;
+}
+
+/**
+ * Summarize a step's test report: aggregate counts plus the failing/errored
+ * cases, each annotated with its failure reasons (reasons are fetched per case,
+ * so lookups are capped at {@link MAX_REASON_LOOKUPS}). Turns "the build failed"
+ * into "these named tests failed and here's why" without grepping the raw log.
+ */
+export async function getTestReports(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; pipeline: string; step: string }
+): Promise<TestReportSummary> {
+  const { workspace, repo, pipeline, step } = params;
+
+  let report;
+  try {
+    report = await api.pipelines.getTestReport(workspace, repo, pipeline, step);
+  } catch (error) {
+    if (error instanceof NotFoundError) {
+      return {
+        summary: { total: 0, passed: 0, failed: 0, error: 0, skipped: 0 },
+        failing: [],
+        no_report: true,
+      };
+    }
+    throw error;
+  }
+
+  const cases = await api.pipelines.getTestCases(workspace, repo, pipeline, step, {
+    pagelen: MAX_PAGELEN,
+    // `uuid` is needed to look up each case's failure reasons, beyond the fields
+    // the presenter keeps.
+    fields: listFields([...TEST_CASE_FIELDS, 'uuid']),
+  });
+  const values = cases.values ?? [];
+
+  const isFailing = (status: string | undefined): boolean =>
+    FAILING_STATUSES.has((status ?? '').toUpperCase());
+  const failingCases = values.filter((c) => isFailing(c.status));
+
+  // Prefer the report's own counts; fall back to counting the fetched cases.
+  const summary = {
+    total: pickNumber(report.total_test_count, values.length),
+    passed: pickNumber(
+      report.passed_test_count,
+      values.filter((c) => (c.status ?? '').toUpperCase() === 'PASSED').length
+    ),
+    failed: pickNumber(
+      report.failed_test_count,
+      values.filter((c) => (c.status ?? '').toUpperCase() === 'FAILED').length
+    ),
+    error: pickNumber(
+      report.error_test_count,
+      values.filter((c) => (c.status ?? '').toUpperCase() === 'ERROR').length
+    ),
+    skipped: pickNumber(
+      report.skipped_test_count,
+      values.filter((c) => (c.status ?? '').toUpperCase() === 'SKIPPED').length
+    ),
+  };
+
+  const failing: Record<string, unknown>[] = [];
+  for (const testCase of failingCases) {
+    const presented = presentTestCase(testCase);
+    if (failing.length < MAX_REASON_LOOKUPS && testCase.uuid) {
+      const reasons = await api.pipelines.getTestCaseReasons(
+        workspace,
+        repo,
+        pipeline,
+        step,
+        testCase.uuid
+      );
+      const text = (reasons.values ?? [])
+        .map((r) => r.message ?? r.status_reason)
+        .filter((t): t is string => Boolean(t))
+        .join('\n')
+        .slice(0, MAX_REASON_CHARS);
+      if (text) presented.reasons = text;
+    }
+    failing.push(presented);
+  }
+
+  return {
+    summary,
+    failing,
+    reasons_truncated: failingCases.length > MAX_REASON_LOOKUPS || undefined,
+  };
 }

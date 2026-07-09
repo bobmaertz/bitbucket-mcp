@@ -17,6 +17,9 @@ import {
   presentDiffstat,
   presentTag,
   presentFileHistoryEntry,
+  presentCommitStatus,
+  presentPrActivity,
+  presentTestCase,
   objectFields,
   listFields,
   PR_SUMMARY_FIELDS,
@@ -36,6 +39,9 @@ import {
   DIFFSTAT_FIELDS,
   TAG_FIELDS,
   FILE_HISTORY_FIELDS,
+  COMMIT_STATUS_FIELDS,
+  PR_ACTIVITY_FIELDS,
+  TEST_CASE_FIELDS,
 } from './presenters.js';
 
 /**
@@ -260,6 +266,59 @@ const fileHistoryFixture = {
   links: { self: {} },
 } as never;
 
+const commitStatusFixture = {
+  key: 'build-1',
+  name: 'CI Build',
+  state: 'SUCCESSFUL',
+  description: 'All good',
+  url: 'https://ci.example.com/build/1',
+  refname: 'main',
+  commit: { hash: 'deadbeefcafe0000', type: 'commit' },
+  created_on: '2026-07-01T10:00:00Z',
+  updated_on: '2026-07-01T10:05:00Z',
+  type: 'build',
+} as never;
+
+const testCaseFixture = {
+  uuid: '{tc}',
+  name: 'testFoo',
+  fully_qualified_name: 'com.acme.FooTest.testFoo',
+  status: 'FAILED',
+  duration_in_ms: 42,
+  type: 'test_case',
+} as never;
+
+const activityApprovalFixture = {
+  pull_request: { id: 42 },
+  approval: { date: '2026-07-01T10:00:00Z', user: { display_name: 'Grace' } },
+} as never;
+
+const activityChangesFixture = {
+  pull_request: { id: 42 },
+  changes_requested: { date: '2026-07-01T10:00:00Z', user: { display_name: 'Linus' } },
+} as never;
+
+const activityCommentFixture = {
+  pull_request: { id: 42 },
+  comment: {
+    user: { display_name: 'Ada' },
+    created_on: '2026-07-01T10:00:00Z',
+    content: { raw: 'nit', html: '<p>nit</p>' },
+    inline: { path: 'src/a.ts', from: 1, to: 2 },
+  },
+} as never;
+
+const activityUpdateFixture = {
+  pull_request: { id: 42 },
+  update: {
+    date: '2026-07-01T10:00:00Z',
+    author: { display_name: 'Ada' },
+    state: 'OPEN',
+    reason: '',
+    title: 'Add widget',
+  },
+} as never;
+
 describe('presenter field sets stay in sync with presenters', () => {
   const cases: Array<{
     name: string;
@@ -331,6 +390,42 @@ describe('presenter field sets stay in sync with presenters', () => {
       present: presentFileHistoryEntry,
       fields: FILE_HISTORY_FIELDS,
       fixture: fileHistoryFixture,
+    },
+    {
+      name: 'commit status',
+      present: presentCommitStatus,
+      fields: COMMIT_STATUS_FIELDS,
+      fixture: commitStatusFixture,
+    },
+    {
+      name: 'test case',
+      present: presentTestCase,
+      fields: TEST_CASE_FIELDS,
+      fixture: testCaseFixture,
+    },
+    {
+      name: 'pr activity (approval)',
+      present: presentPrActivity,
+      fields: PR_ACTIVITY_FIELDS,
+      fixture: activityApprovalFixture,
+    },
+    {
+      name: 'pr activity (changes requested)',
+      present: presentPrActivity,
+      fields: PR_ACTIVITY_FIELDS,
+      fixture: activityChangesFixture,
+    },
+    {
+      name: 'pr activity (comment)',
+      present: presentPrActivity,
+      fields: PR_ACTIVITY_FIELDS,
+      fixture: activityCommentFixture,
+    },
+    {
+      name: 'pr activity (update)',
+      present: presentPrActivity,
+      fields: PR_ACTIVITY_FIELDS,
+      fixture: activityUpdateFixture,
     },
     {
       name: 'pipeline step',

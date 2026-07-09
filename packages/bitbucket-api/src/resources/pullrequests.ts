@@ -7,6 +7,9 @@ import type {
   PaginatedResponse,
   ListOptions,
   Commit,
+  DiffStat,
+  CommitStatus,
+  PullRequestActivity,
 } from '../types/index.js';
 import { seg } from '../utils/path.js';
 import {
@@ -186,5 +189,44 @@ export class PullRequestsResource {
   async getPatch(workspace: string, repoSlug: string, prId: number): Promise<string> {
     const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/patch`;
     return this.client.get<string>(path);
+  }
+
+  /** Get the per-file diffstat for a pull request (cheap "what changed"). */
+  async getDiffstat(
+    workspace: string,
+    repoSlug: string,
+    prId: number,
+    options?: ListOptions
+  ): Promise<PaginatedResponse<DiffStat>> {
+    const path = `/repositories/${seg(workspace)}/${seg(
+      repoSlug
+    )}/pullrequests/${prId}/diffstat${buildListQuery(options)}`;
+    return this.client.get<PaginatedResponse<DiffStat>>(path);
+  }
+
+  /** List the CI/build statuses reported against a pull request. */
+  async getStatuses(
+    workspace: string,
+    repoSlug: string,
+    prId: number,
+    options?: ListOptions
+  ): Promise<PaginatedResponse<CommitStatus>> {
+    const path = `/repositories/${seg(workspace)}/${seg(
+      repoSlug
+    )}/pullrequests/${prId}/statuses${buildListQuery(options)}`;
+    return this.client.get<PaginatedResponse<CommitStatus>>(path);
+  }
+
+  /** Get the activity log (updates, approvals, comments) for a pull request. */
+  async getActivity(
+    workspace: string,
+    repoSlug: string,
+    prId: number,
+    options?: ListOptions
+  ): Promise<PaginatedResponse<PullRequestActivity>> {
+    const path = `/repositories/${seg(workspace)}/${seg(
+      repoSlug
+    )}/pullrequests/${prId}/activity${buildListQuery(options)}`;
+    return this.client.get<PaginatedResponse<PullRequestActivity>>(path);
   }
 }

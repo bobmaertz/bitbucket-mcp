@@ -11,3 +11,6 @@ export * from './pipeline.js';
 export * from './source.js';
 export * from './commit.js';
 export * from './tag.js';
+export * from './status.js';
+export * from './activity.js';
+export * from './testreport.js';

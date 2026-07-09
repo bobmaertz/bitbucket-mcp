@@ -25,19 +25,25 @@ describe('read-only tool surface', () => {
         'bitbucket_get_file',
         'bitbucket_get_file_history',
         'bitbucket_get_pipeline',
+        'bitbucket_get_pr_activity',
         'bitbucket_get_pr_commits',
         'bitbucket_get_pr_diff',
+        'bitbucket_get_pr_diffstat',
         'bitbucket_get_pull_request',
         'bitbucket_get_repository',
         'bitbucket_get_step_log',
         'bitbucket_get_tag',
         'bitbucket_get_task',
+        'bitbucket_get_test_reports',
         'bitbucket_list_branches',
+        'bitbucket_list_commit_pull_requests',
+        'bitbucket_list_commit_statuses',
         'bitbucket_list_commits',
         'bitbucket_list_directory',
         'bitbucket_list_pipeline_steps',
         'bitbucket_list_pipelines',
         'bitbucket_list_pr_comments',
+        'bitbucket_list_pr_statuses',
         'bitbucket_list_pr_tasks',
         'bitbucket_list_pull_requests',
         'bitbucket_list_repositories',
@@ -407,5 +413,82 @@ describe('source/commits/tags handlers', () => {
     );
     const parsed = JSON.parse(textOf(result));
     expect(parsed).toMatchObject({ name: 'v1.0.0', target_hash: 'deadbeefcafe', tagger: 'Ada' });
+  });
+});
+
+describe('pr/ci-depth handlers', () => {
+  function ctxWith(api: Record<string, unknown>): ToolContext {
+    return {
+      api: api as unknown as BitbucketAPI,
+      defaults: { workspace: 'acme' },
+      logger: createLogger('error'),
+    };
+  }
+
+  it('list_commit_statuses requires a commit', async () => {
+    const ctx = ctxWith({ commits: {} });
+    await expect(handlers.bitbucket_list_commit_statuses(ctx, { repo: 'repo' })).rejects.toThrow(
+      /commit/
+    );
+  });
+
+  it('get_pr_activity normalizes entries by kind', async () => {
+    const getActivity = vi.fn().mockResolvedValue({
+      size: 1,
+      next: undefined,
+      values: [{ approval: { date: '2026-07-01T10:00:00Z', user: { display_name: 'Grace' } } }],
+    });
+    const ctx = ctxWith({ pullRequests: { getActivity } });
+
+    const result = await handlers.bitbucket_get_pr_activity(ctx, { repo: 'repo', id: 42 });
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.items).toEqual([
+      { kind: 'approval', user: 'Grace', date: '2026-07-01T10:00:00Z' },
+    ]);
+  });
+
+  it('get_test_reports composes summary + failing cases with reasons', async () => {
+    const pipelines = {
+      getTestReport: vi.fn().mockResolvedValue({
+        total_test_count: 2,
+        passed_test_count: 1,
+        failed_test_count: 1,
+        error_test_count: 0,
+        skipped_test_count: 0,
+      }),
+      getTestCases: vi.fn().mockResolvedValue({
+        values: [
+          { uuid: '{c1}', fully_qualified_name: 'T.a', status: 'PASSED' },
+          { uuid: '{c2}', fully_qualified_name: 'T.b', status: 'FAILED' },
+        ],
+      }),
+      getTestCaseReasons: vi.fn().mockResolvedValue({ values: [{ message: 'boom' }] }),
+    };
+    const ctx = ctxWith({ pipelines });
+
+    const result = await handlers.bitbucket_get_test_reports(ctx, {
+      repo: 'repo',
+      pipeline: 7,
+      step: '{s}',
+    });
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.summary).toEqual({ total: 2, passed: 1, failed: 1, error: 0, skipped: 0 });
+    expect(parsed.failing).toEqual([{ name: 'T.b', status: 'FAILED', reasons: 'boom' }]);
+  });
+
+  it('get_test_reports handles a step with no report', async () => {
+    const { NotFoundError } = await import('@bobmaertz/bitbucket-api');
+    const pipelines = {
+      getTestReport: vi.fn().mockRejectedValue(new NotFoundError('test report')),
+    };
+    const ctx = ctxWith({ pipelines });
+    const result = await handlers.bitbucket_get_test_reports(ctx, {
+      repo: 'repo',
+      pipeline: 7,
+      step: '{s}',
+    });
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.no_report).toBe(true);
+    expect(parsed.failing).toEqual([]);
   });
 });
