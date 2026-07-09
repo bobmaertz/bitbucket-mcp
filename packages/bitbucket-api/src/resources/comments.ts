@@ -7,6 +7,7 @@ import type {
   ListOptions,
 } from '../types/index.js';
 import { seg } from '../utils/path.js';
+import { buildListQuery, type FieldOptions } from '../utils/query.js';
 
 /**
  * Comments resource API
@@ -23,16 +24,9 @@ export class CommentsResource {
     prId: number,
     options?: ListOptions
   ): Promise<PaginatedResponse<Comment>> {
-    const params = new URLSearchParams();
-
-    if (options?.page) params.append('page', options.page.toString());
-    if (options?.pagelen) params.append('pagelen', options.pagelen.toString());
-    if (options?.q) params.append('q', options.q);
-    if (options?.sort) params.append('sort', options.sort);
-
-    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/comments${
-      params.toString() ? `?${params.toString()}` : ''
-    }`;
+    const path = `/repositories/${seg(workspace)}/${seg(
+      repoSlug
+    )}/pullrequests/${prId}/comments${buildListQuery(options)}`;
 
     return this.client.get<PaginatedResponse<Comment>>(path);
   }
@@ -44,9 +38,12 @@ export class CommentsResource {
     workspace: string,
     repoSlug: string,
     prId: number,
-    commentId: number
+    commentId: number,
+    options?: FieldOptions
   ): Promise<Comment> {
-    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/comments/${commentId}`;
+    const path = `/repositories/${seg(workspace)}/${seg(
+      repoSlug
+    )}/pullrequests/${prId}/comments/${commentId}${buildListQuery(options)}`;
     return this.client.get<Comment>(path);
   }
 

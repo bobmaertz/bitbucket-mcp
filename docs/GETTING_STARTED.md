@@ -323,7 +323,7 @@ bitbucket_mcp/
 │       │   └── tools/          # Tool implementations
 │       └── dist/               # Compiled JavaScript
 │
-├── docs/ai/                    # Design documents
+├── docs/                       # Documentation (getting started, audit & roadmap)
 ├── package.json                # Root package configuration
 └── README.md                   # Project overview
 ```
@@ -338,15 +338,14 @@ bitbucket_mcp/
 
 ## Next Steps
 
-- Read the [Design Document](docs/ai/DESIGN.md) for architectural details
-- Check the [Implementation Plan](docs/ai/IMPLEMENTATION_PLAN.md) for development roadmap
-- Explore the [README](README.md) for API reference
+- Read the [API Audit & Roadmap](API_AUDIT_AND_ROADMAP.md) for the current tool surface and planned work
+- Explore the [README](../README.md) for API reference
 - Review Bitbucket REST API docs: https://developer.atlassian.com/cloud/bitbucket/rest/
 
 ## Getting Help
 
-- Check the [README](README.md) for detailed API documentation
-- Review the [Design Document](docs/ai/DESIGN.md) for architecture
+- Check the [README](../README.md) for detailed API documentation
+- Review the [API Audit & Roadmap](API_AUDIT_AND_ROADMAP.md) for architecture and direction
 - Open an issue on GitHub (if applicable)
 - Check Bitbucket API status: https://bitbucket.status.atlassian.com/
 

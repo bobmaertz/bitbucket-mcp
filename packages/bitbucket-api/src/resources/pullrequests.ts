@@ -9,6 +9,12 @@ import type {
   Commit,
 } from '../types/index.js';
 import { seg } from '../utils/path.js';
+import {
+  buildListQuery,
+  buildDiffQuery,
+  type DiffOptions,
+  type FieldOptions,
+} from '../utils/query.js';
 
 /**
  * Pull Requests resource API
@@ -24,17 +30,9 @@ export class PullRequestsResource {
     repoSlug: string,
     options?: ListOptions & { state?: 'OPEN' | 'MERGED' | 'DECLINED' | 'SUPERSEDED' }
   ): Promise<PaginatedResponse<PullRequest>> {
-    const params = new URLSearchParams();
-
-    if (options?.page) params.append('page', options.page.toString());
-    if (options?.pagelen) params.append('pagelen', options.pagelen.toString());
-    if (options?.state) params.append('state', options.state);
-    if (options?.q) params.append('q', options.q);
-    if (options?.sort) params.append('sort', options.sort);
-
-    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests${
-      params.toString() ? `?${params.toString()}` : ''
-    }`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests${buildListQuery(
+      options
+    )}`;
 
     return this.client.get<PaginatedResponse<PullRequest>>(path);
   }
@@ -58,16 +56,9 @@ export class PullRequestsResource {
       return this.client.get<PaginatedResponse<PullRequest>>(options.nextUrl);
     }
 
-    const params = new URLSearchParams();
-    if (options?.page) params.append('page', options.page.toString());
-    if (options?.pagelen) params.append('pagelen', options.pagelen.toString());
-    if (options?.state) params.append('state', options.state);
-    if (options?.q) params.append('q', options.q);
-    if (options?.sort) params.append('sort', options.sort);
-
-    const path = `/workspaces/${seg(workspace)}/pullrequests/${seg(selectedUser)}${
-      params.toString() ? `?${params.toString()}` : ''
-    }`;
+    const path = `/workspaces/${seg(workspace)}/pullrequests/${seg(selectedUser)}${buildListQuery(
+      options
+    )}`;
 
     return this.client.get<PaginatedResponse<PullRequest>>(path);
   }
@@ -75,8 +66,15 @@ export class PullRequestsResource {
   /**
    * Get a specific pull request
    */
-  async get(workspace: string, repoSlug: string, prId: number): Promise<PullRequest> {
-    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}`;
+  async get(
+    workspace: string,
+    repoSlug: string,
+    prId: number,
+    options?: FieldOptions
+  ): Promise<PullRequest> {
+    const path = `/repositories/${seg(workspace)}/${seg(
+      repoSlug
+    )}/pullrequests/${prId}${buildListQuery(options)}`;
     return this.client.get<PullRequest>(path);
   }
 
@@ -155,22 +153,30 @@ export class PullRequestsResource {
     prId: number,
     options?: ListOptions
   ): Promise<PaginatedResponse<Commit>> {
-    const params = new URLSearchParams();
-    if (options?.page) params.append('page', options.page.toString());
-    if (options?.pagelen) params.append('pagelen', options.pagelen.toString());
-
-    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/commits${
-      params.toString() ? `?${params.toString()}` : ''
-    }`;
+    const path = `/repositories/${seg(workspace)}/${seg(
+      repoSlug
+    )}/pullrequests/${prId}/commits${buildListQuery(options)}`;
 
     return this.client.get<PaginatedResponse<Commit>>(path);
   }
 
   /**
-   * Get diff for a pull request
+   * Get diff for a pull request.
+   *
+   * The diff endpoint accepts the same scoping params as the repo `diff/{spec}`
+   * endpoint it redirects to: `path` (repeatable — limit the diff to one or more
+   * files) and `context` (lines of context around each hunk). Scoping the diff
+   * server-side is far cheaper than downloading the whole thing and trimming it.
    */
-  async getDiff(workspace: string, repoSlug: string, prId: number): Promise<string> {
-    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/diff`;
+  async getDiff(
+    workspace: string,
+    repoSlug: string,
+    prId: number,
+    options?: DiffOptions
+  ): Promise<string> {
+    const path = `/repositories/${seg(workspace)}/${seg(
+      repoSlug
+    )}/pullrequests/${prId}/diff${buildDiffQuery(options)}`;
     return this.client.get<string>(path);
   }
 

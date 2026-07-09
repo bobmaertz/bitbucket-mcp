@@ -9,6 +9,7 @@ describe('PipelinesResource', () => {
   beforeEach(() => {
     mockClient = {
       get: vi.fn().mockResolvedValue({ values: [], size: 0 }),
+      getText: vi.fn().mockResolvedValue({ text: '', totalBytes: 0, partial: false }),
       post: vi.fn(),
       put: vi.fn(),
       delete: vi.fn(),
@@ -58,13 +59,25 @@ describe('PipelinesResource', () => {
   });
 
   describe('getStepLog', () => {
-    it('requests the log as text', async () => {
-      (mockClient.get as ReturnType<typeof vi.fn>).mockResolvedValue('log output');
+    it('requests the log via getText and returns its metadata', async () => {
+      (mockClient.getText as ReturnType<typeof vi.fn>).mockResolvedValue({
+        text: 'log output',
+        totalBytes: 10,
+        partial: false,
+      });
       const log = await resource.getStepLog('ws', 'repo', '7', '{step-uuid}');
-      expect(log).toBe('log output');
-      expect(mockClient.get).toHaveBeenCalledWith(
+      expect(log).toEqual({ text: 'log output', totalBytes: 10, partial: false });
+      expect(mockClient.getText).toHaveBeenCalledWith(
         '/repositories/ws/repo/pipelines/7/steps/%7Bstep-uuid%7D/log',
-        { responseType: 'text', headers: { Accept: '*/*' } }
+        undefined
+      );
+    });
+
+    it('forwards a Range header value when tailing', async () => {
+      await resource.getStepLog('ws', 'repo', '7', '{step-uuid}', 'bytes=-1024');
+      expect(mockClient.getText).toHaveBeenCalledWith(
+        '/repositories/ws/repo/pipelines/7/steps/%7Bstep-uuid%7D/log',
+        'bytes=-1024'
       );
     });
   });

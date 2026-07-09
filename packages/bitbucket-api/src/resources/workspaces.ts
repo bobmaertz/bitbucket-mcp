@@ -1,5 +1,6 @@
 import type { BitbucketClient } from '../client.js';
 import type { Workspace, PaginatedResponse, ListOptions } from '../types/index.js';
+import { buildListQuery } from '../utils/query.js';
 
 /**
  * Workspaces resource API (read-only).
@@ -19,14 +20,7 @@ export class WorkspacesResource {
   constructor(private client: BitbucketClient) {}
 
   async list(options?: ListOptions): Promise<PaginatedResponse<Workspace>> {
-    const params = new URLSearchParams();
-
-    if (options?.page) params.append('page', options.page.toString());
-    if (options?.pagelen) params.append('pagelen', options.pagelen.toString());
-    if (options?.q) params.append('q', options.q);
-    if (options?.sort) params.append('sort', options.sort);
-
-    const path = `/user/workspaces${params.toString() ? `?${params.toString()}` : ''}`;
+    const path = `/user/workspaces${buildListQuery(options)}`;
     const response = await this.client.get<PaginatedResponse<WorkspaceAccess>>(path);
     return {
       ...response,

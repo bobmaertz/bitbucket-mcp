@@ -15,13 +15,13 @@ this plan proposes exposing write operations.
 
 **18 read-only MCP tools** (README currently documents only 13 — see § 5 Housekeeping):
 
-| Area | Tools |
-|---|---|
-| Repositories | `list_repositories`, `get_repository` |
-| Pull requests | `list_pull_requests`, `list_user_pull_requests`, `get_pull_request`, `get_pr_commits`, `get_pr_diff` |
-| PR comments/tasks | `list_pr_comments`, `get_comment`, `list_pr_tasks`, `get_task` |
-| Branches | `list_branches`, `get_branch` |
-| Pipelines | `list_pipelines`, `get_pipeline`, `list_pipeline_steps`, `get_step_log`, `list_schedules` |
+| Area              | Tools                                                                                                |
+| ----------------- | ---------------------------------------------------------------------------------------------------- |
+| Repositories      | `list_repositories`, `get_repository`                                                                |
+| Pull requests     | `list_pull_requests`, `list_user_pull_requests`, `get_pull_request`, `get_pr_commits`, `get_pr_diff` |
+| PR comments/tasks | `list_pr_comments`, `get_comment`, `list_pr_tasks`, `get_task`                                       |
+| Branches          | `list_branches`, `get_branch`                                                                        |
+| Pipelines         | `list_pipelines`, `get_pipeline`, `list_pipeline_steps`, `get_step_log`, `list_schedules`            |
 
 Implemented in the client but **not exposed** as tools: `pullRequests.getPatch`, `workspaces.list`
 (`GET /user/workspaces`), and the full write surface (PR create/update/approve/decline/merge,
@@ -40,32 +40,32 @@ the granular `read:*:bitbucket` API-token scopes map onto them.
 
 ### High value — "give the agent eyes on the repo"
 
-| Capability | Endpoints | Notes |
-|---|---|---|
-| **Source browsing** | `GET /repositories/{ws}/{repo}/src/{commit}/{path}` | Dual-purpose: directory → paginated JSON listing; file → raw contents. `?format=meta` returns file metadata (size, type) without the bytes; `?max_depth=N` returns a recursive tree in one call. Biggest single gap today. |
-| **File history** | `GET .../filehistory/{commit}/{path}` | `git log --follow` for a file; supports `q`, `sort`, `fields`, `renames=false`. |
-| **Commits** | `GET .../commits` (+ POST bulk form), `GET .../commit/{hash}` | List supports `include`/`exclude` refs and `path` filter. |
-| **Commit diff/diffstat/patch** | `GET .../diff/{spec}`, `.../diffstat/{spec}`, `.../patch/{spec}` | `{spec}` can be a single hash or `a..b`. Diff supports `path` (repeatable), `context`, `ignore_whitespace`, `topic` (three-dot merge-base diff). Diffstat is the cheap JSON change summary. |
-| **Merge base** | `GET .../merge-base/{a}..{b}` | Common-ancestor lookup. |
-| **Tags** | `GET .../refs/tags[/{name}]`, `GET .../refs` | We cover branches only; `/refs` returns branches + tags in one call. |
-| **Build/commit statuses** | `GET .../commit/{hash}/statuses`, `GET .../pullrequests/{id}/statuses` | CI visibility for third-party CI, not just Bitbucket Pipelines. |
-| **PR diffstat** | `GET .../pullrequests/{id}/diffstat` | Per-file added/removed lines — a far cheaper "what changed" than the full diff we fetch today. |
-| **PR activity** | `GET .../pullrequests/{id}/activity` (and repo-wide `.../pullrequests/activity`) | Approvals, updates, comment events in one timeline. |
-| **PRs for a commit** | `GET .../commit/{hash}/pullrequests` | "Which PR introduced this?" |
+| Capability                     | Endpoints                                                                        | Notes                                                                                                                                                                                                                      |
+| ------------------------------ | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Source browsing**            | `GET /repositories/{ws}/{repo}/src/{commit}/{path}`                              | Dual-purpose: directory → paginated JSON listing; file → raw contents. `?format=meta` returns file metadata (size, type) without the bytes; `?max_depth=N` returns a recursive tree in one call. Biggest single gap today. |
+| **File history**               | `GET .../filehistory/{commit}/{path}`                                            | `git log --follow` for a file; supports `q`, `sort`, `fields`, `renames=false`.                                                                                                                                            |
+| **Commits**                    | `GET .../commits` (+ POST bulk form), `GET .../commit/{hash}`                    | List supports `include`/`exclude` refs and `path` filter.                                                                                                                                                                  |
+| **Commit diff/diffstat/patch** | `GET .../diff/{spec}`, `.../diffstat/{spec}`, `.../patch/{spec}`                 | `{spec}` can be a single hash or `a..b`. Diff supports `path` (repeatable), `context`, `ignore_whitespace`, `topic` (three-dot merge-base diff). Diffstat is the cheap JSON change summary.                                |
+| **Merge base**                 | `GET .../merge-base/{a}..{b}`                                                    | Common-ancestor lookup.                                                                                                                                                                                                    |
+| **Tags**                       | `GET .../refs/tags[/{name}]`, `GET .../refs`                                     | We cover branches only; `/refs` returns branches + tags in one call.                                                                                                                                                       |
+| **Build/commit statuses**      | `GET .../commit/{hash}/statuses`, `GET .../pullrequests/{id}/statuses`           | CI visibility for third-party CI, not just Bitbucket Pipelines.                                                                                                                                                            |
+| **PR diffstat**                | `GET .../pullrequests/{id}/diffstat`                                             | Per-file added/removed lines — a far cheaper "what changed" than the full diff we fetch today.                                                                                                                             |
+| **PR activity**                | `GET .../pullrequests/{id}/activity` (and repo-wide `.../pullrequests/activity`) | Approvals, updates, comment events in one timeline.                                                                                                                                                                        |
+| **PRs for a commit**           | `GET .../commit/{hash}/pullrequests`                                             | "Which PR introduced this?"                                                                                                                                                                                                |
 
 ### Medium value — CI/CD and review context
 
-| Capability | Endpoints | Notes |
-|---|---|---|
-| **Pipeline test reports** | `GET .../steps/{step}/test_reports`, `.../test_reports/test_cases`, `.../test_case_reasons` | Turns "pipeline failed" into named failing tests with failure output, without grepping full logs. |
-| **Deployments/environments** | `GET .../deployments[/{uuid}]`, `.../environments[/{uuid}]` | Read-only release visibility. |
-| **Effective default reviewers** | `GET .../effective-default-reviewers` | Includes project-level inheritance; plain `default-reviewers` also available. |
-| **PR conflicts** | `GET .../pullrequests/{id}/conflicts`, `GET .../file-conflicts/{spec}` | Mergeability diagnostics. |
-| **Projects** | `GET /workspaces/{ws}/projects[/{key}]` | Plus repos-by-project via `GET /repositories/{ws}?q=project.key="KEY"`. |
-| **Workspaces** | `GET /user/workspaces` | Client code already exists — just needs a tool. |
-| **Workspace members / permissions** | `GET /workspaces/{ws}/members`, `.../permissions`, `.../permissions/repositories[/{repo}]`, `GET /user/workspaces/{ws}/permission` | Effective-permission reads; useful for "who can touch this repo". |
-| **Branching model** | `GET .../branching-model`, `.../effective-branching-model` | Development/production branch conventions; plain `repository` scope. |
-| **Repo pipeline variables** | `GET .../pipelines_config/variables` (repo & workspace) | Secured values come back masked; presenter already has masking convention. |
+| Capability                          | Endpoints                                                                                                                          | Notes                                                                                             |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Pipeline test reports**           | `GET .../steps/{step}/test_reports`, `.../test_reports/test_cases`, `.../test_case_reasons`                                        | Turns "pipeline failed" into named failing tests with failure output, without grepping full logs. |
+| **Deployments/environments**        | `GET .../deployments[/{uuid}]`, `.../environments[/{uuid}]`                                                                        | Read-only release visibility.                                                                     |
+| **Effective default reviewers**     | `GET .../effective-default-reviewers`                                                                                              | Includes project-level inheritance; plain `default-reviewers` also available.                     |
+| **PR conflicts**                    | `GET .../pullrequests/{id}/conflicts`, `GET .../file-conflicts/{spec}`                                                             | Mergeability diagnostics.                                                                         |
+| **Projects**                        | `GET /workspaces/{ws}/projects[/{key}]`                                                                                            | Plus repos-by-project via `GET /repositories/{ws}?q=project.key="KEY"`.                           |
+| **Workspaces**                      | `GET /user/workspaces`                                                                                                             | Client code already exists — just needs a tool.                                                   |
+| **Workspace members / permissions** | `GET /workspaces/{ws}/members`, `.../permissions`, `.../permissions/repositories[/{repo}]`, `GET /user/workspaces/{ws}/permission` | Effective-permission reads; useful for "who can touch this repo".                                 |
+| **Branching model**                 | `GET .../branching-model`, `.../effective-branching-model`                                                                         | Development/production branch conventions; plain `repository` scope.                              |
+| **Repo pipeline variables**         | `GET .../pipelines_config/variables` (repo & workspace)                                                                            | Secured values come back masked; presenter already has masking convention.                        |
 
 ### Low value / niche
 
@@ -88,7 +88,7 @@ fit for a least-privilege read-only server.
 
 1. **`fields` partial responses — the single biggest win.** Nearly every JSON endpoint accepts
    `?fields=` with dotted paths (`values.title`), `+`/`-` modifiers, and wildcards. Atlassian
-   evaluates fields lazily server-side, so trimmed requests are also *faster*, not just smaller.
+   evaluates fields lazily server-side, so trimmed requests are also _faster_, not just smaller.
    Since the presenters already define exactly which fields each tool keeps, each operation can send
    a matching `fields` list and stop downloading the ~90% of the payload the presenter throws away.
    Presenters stay as the safety net / shaping layer.
@@ -115,49 +115,49 @@ convention; all new tools are read-only GETs behind the existing presenter/trunc
 
 ### Phase 1 — Efficiency & hygiene (no new API surface)
 
-| Item | Change |
-|---|---|
-| 1.1 | Add `fields?: string` support to `ListOptions`/request layer; derive per-operation `fields` lists from the presenters and send them on every existing GET. |
-| 1.2 | `Range`-based log fetching in `pipelines.getStepLog` (fall back to full fetch if 416/no support). |
-| 1.3 | Add `path`/`context` params to PR diff fetching; fix `clampPagelen` on the three pipeline list ops; per-endpoint pagelen caps. |
-| 1.4 | Bearer-token auth mode (workspace/project/repo access tokens) alongside Basic; read `X-RateLimit-NearLimit` and annotate tool responses when near the limit. |
-| 1.5 | Docs sync (see § 5) and removal countdown for app-password fallback. |
+| Item | Change                                                                                                                                                       |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1.1  | Add `fields?: string` support to `ListOptions`/request layer; derive per-operation `fields` lists from the presenters and send them on every existing GET.   |
+| 1.2  | `Range`-based log fetching in `pipelines.getStepLog` (fall back to full fetch if 416/no support).                                                            |
+| 1.3  | Add `path`/`context` params to PR diff fetching; fix `clampPagelen` on the three pipeline list ops; per-endpoint pagelen caps.                               |
+| 1.4  | Bearer-token auth mode (workspace/project/repo access tokens) alongside Basic; read `X-RateLimit-NearLimit` and annotate tool responses when near the limit. |
+| 1.5  | Docs sync (see § 5) and removal countdown for app-password fallback.                                                                                         |
 
 ### Phase 2 — Source & commits (8 new tools)
 
-| Tool | Endpoint |
-|---|---|
-| `bitbucket_list_directory` | `GET /src/{commit}/{path}` (dir mode; `max_depth`, `q`, `sort`) |
-| `bitbucket_get_file` | `GET /src/{commit}/{path}` (file mode; `format=meta` first when size-unknown, then ranged/truncated content with `max_lines`-style cap like the diff tool) |
-| `bitbucket_get_file_history` | `GET /filehistory/{commit}/{path}` |
-| `bitbucket_list_commits` | `GET /commits` (`include`/`exclude`, `path`) |
-| `bitbucket_get_commit` | `GET /commit/{hash}` |
-| `bitbucket_get_commit_diff` | `GET /diff/{spec}` (with `path`, `context`; reuse diff truncation) |
-| `bitbucket_get_diffstat` | `GET /diffstat/{spec}` |
-| `bitbucket_list_tags` | `GET /refs/tags` (+ `get_tag` if warranted) |
+| Tool                         | Endpoint                                                                                                                                                   |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bitbucket_list_directory`   | `GET /src/{commit}/{path}` (dir mode; `max_depth`, `q`, `sort`)                                                                                            |
+| `bitbucket_get_file`         | `GET /src/{commit}/{path}` (file mode; `format=meta` first when size-unknown, then ranged/truncated content with `max_lines`-style cap like the diff tool) |
+| `bitbucket_get_file_history` | `GET /filehistory/{commit}/{path}`                                                                                                                         |
+| `bitbucket_list_commits`     | `GET /commits` (`include`/`exclude`, `path`)                                                                                                               |
+| `bitbucket_get_commit`       | `GET /commit/{hash}`                                                                                                                                       |
+| `bitbucket_get_commit_diff`  | `GET /diff/{spec}` (with `path`, `context`; reuse diff truncation)                                                                                         |
+| `bitbucket_get_diffstat`     | `GET /diffstat/{spec}`                                                                                                                                     |
+| `bitbucket_list_tags`        | `GET /refs/tags` (+ `get_tag` if warranted)                                                                                                                |
 
 Default branch resolution: reuse `get_repository`'s `mainbranch` (already presented) — no new tool.
 
 ### Phase 3 — PR & CI depth (6 new tools)
 
-| Tool | Endpoint |
-|---|---|
-| `bitbucket_get_pr_diffstat` | `GET /pullrequests/{id}/diffstat` — recommend in `get_pr_diff`'s description as the cheap first step |
-| `bitbucket_list_pr_statuses` | `GET /pullrequests/{id}/statuses` |
-| `bitbucket_list_commit_statuses` | `GET /commit/{hash}/statuses` |
-| `bitbucket_get_pr_activity` | `GET /pullrequests/{id}/activity` |
-| `bitbucket_list_commit_pull_requests` | `GET /commit/{hash}/pullrequests` |
-| `bitbucket_get_test_reports` | `GET /steps/{step}/test_reports` + `/test_cases` + `/test_case_reasons`, composed into one summarized "failing tests + reasons" tool |
+| Tool                                  | Endpoint                                                                                                                             |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `bitbucket_get_pr_diffstat`           | `GET /pullrequests/{id}/diffstat` — recommend in `get_pr_diff`'s description as the cheap first step                                 |
+| `bitbucket_list_pr_statuses`          | `GET /pullrequests/{id}/statuses`                                                                                                    |
+| `bitbucket_list_commit_statuses`      | `GET /commit/{hash}/statuses`                                                                                                        |
+| `bitbucket_get_pr_activity`           | `GET /pullrequests/{id}/activity`                                                                                                    |
+| `bitbucket_list_commit_pull_requests` | `GET /commit/{hash}/pullrequests`                                                                                                    |
+| `bitbucket_get_test_reports`          | `GET /steps/{step}/test_reports` + `/test_cases` + `/test_case_reasons`, composed into one summarized "failing tests + reasons" tool |
 
 ### Phase 4 — Workspace & governance reads (5–7 new tools)
 
-| Tool | Endpoint |
-|---|---|
-| `bitbucket_list_workspaces` | `GET /user/workspaces` (client code already exists) |
-| `bitbucket_list_projects` / `bitbucket_get_project` | `GET /workspaces/{ws}/projects[/{key}]` |
-| `bitbucket_list_deployments` / `bitbucket_list_environments` | `GET /deployments`, `GET /environments` |
-| `bitbucket_get_branching_model` | `GET /effective-branching-model` |
-| `bitbucket_list_workspace_members` | `GET /workspaces/{ws}/members` |
+| Tool                                                                                      | Endpoint                                                                                   |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `bitbucket_list_workspaces`                                                               | `GET /user/workspaces` (client code already exists)                                        |
+| `bitbucket_list_projects` / `bitbucket_get_project`                                       | `GET /workspaces/{ws}/projects[/{key}]`                                                    |
+| `bitbucket_list_deployments` / `bitbucket_list_environments`                              | `GET /deployments`, `GET /environments`                                                    |
+| `bitbucket_get_branching_model`                                                           | `GET /effective-branching-model`                                                           |
+| `bitbucket_list_workspace_members`                                                        | `GET /workspaces/{ws}/members`                                                             |
 | (optional) `bitbucket_get_effective_default_reviewers`, `bitbucket_list_repo_permissions` | `GET /effective-default-reviewers`, `GET /workspaces/{ws}/permissions/repositories/{repo}` |
 
 End state: ~38 read-only tools. Tool-count creep is a real MCP concern — if the client's model

@@ -158,4 +158,16 @@ export interface ListOptions {
   pagelen?: number;
   q?: string;
   sort?: string;
+  /**
+   * Bitbucket partial-response selector (the `fields` query param). A
+   * comma-separated list of dotted paths that trims the response server-side
+   * before it is serialized — e.g. `values.id,values.title,next` for a list, or
+   * `id,title,state` for a single object. Fields are evaluated lazily on the
+   * server, so a trimmed request is both smaller and faster. Passed through
+   * verbatim; callers are responsible for the `values.` prefix on collections
+   * and for including `next` so pagination keeps working.
+   *
+   * @see https://developer.atlassian.com/cloud/bitbucket/rest/intro/#partial-responses
+   */
+  fields?: string;
 }

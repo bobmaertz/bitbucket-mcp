@@ -56,6 +56,7 @@ export * from './utils/errors.js';
 export * from './utils/pagination.js';
 export * from './utils/redact.js';
 export * from './utils/path.js';
+export * from './utils/query.js';
 export * from './client.js';
 export * from './auth.js';
 export * from './secret.js';

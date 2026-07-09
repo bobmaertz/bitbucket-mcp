@@ -268,12 +268,20 @@ describe('pipeline handlers', () => {
     const ctx = ctxWith({ get });
 
     await handlers.bitbucket_get_pipeline(ctx, { repo: 'repo', pipeline: 42 });
-    expect(get).toHaveBeenCalledWith('acme', 'repo', '42');
+    expect(get).toHaveBeenCalledWith(
+      'acme',
+      'repo',
+      '42',
+      expect.objectContaining({ fields: expect.any(String) })
+    );
   });
 
   it('tails and greps step logs, reporting truncation', async () => {
     const lines = Array.from({ length: 10 }, (_, i) => (i % 2 ? `ERROR line ${i}` : `info ${i}`));
-    const getStepLog = vi.fn().mockResolvedValue(lines.join('\n'));
+    const text = lines.join('\n');
+    const getStepLog = vi
+      .fn()
+      .mockResolvedValue({ text, totalBytes: Buffer.byteLength(text), partial: false });
     const ctx = ctxWith({ getStepLog });
 
     const result = await handlers.bitbucket_get_step_log(ctx, {
@@ -284,7 +292,8 @@ describe('pipeline handlers', () => {
       tail: 2,
     });
 
-    expect(getStepLog).toHaveBeenCalledWith('acme', 'repo', '7', '{s}');
+    // grep must scan the whole log, so no Range header is sent (undefined).
+    expect(getStepLog).toHaveBeenCalledWith('acme', 'repo', '7', '{s}', undefined);
     const parsed = JSON.parse(textOf(result));
     expect(parsed.returned_lines).toBe(2);
     expect(parsed.truncated).toBe(true);

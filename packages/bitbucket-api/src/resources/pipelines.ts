@@ -6,6 +6,7 @@ import type {
   PaginatedResponse,
   ListOptions,
 } from '../types/index.js';
+import { buildListQuery, type FieldOptions } from '../utils/query.js';
 
 /**
  * Bitbucket Pipelines resource (read-only surface).
@@ -22,13 +23,20 @@ export class PipelinesResource {
     repoSlug: string,
     options?: ListOptions
   ): Promise<PaginatedResponse<Pipeline>> {
-    const path = `/repositories/${workspace}/${repoSlug}/pipelines${queryString(options)}`;
+    const path = `/repositories/${workspace}/${repoSlug}/pipelines${buildListQuery(options)}`;
     return this.client.get<PaginatedResponse<Pipeline>>(path);
   }
 
   /** Get a single pipeline run by build number or UUID. */
-  async get(workspace: string, repoSlug: string, pipeline: string): Promise<Pipeline> {
-    const path = `/repositories/${workspace}/${repoSlug}/pipelines/${pipelineRef(pipeline)}`;
+  async get(
+    workspace: string,
+    repoSlug: string,
+    pipeline: string,
+    options?: FieldOptions
+  ): Promise<Pipeline> {
+    const path = `/repositories/${workspace}/${repoSlug}/pipelines/${pipelineRef(
+      pipeline
+    )}${buildListQuery(options)}`;
     return this.client.get<Pipeline>(path);
   }
 
@@ -41,30 +49,32 @@ export class PipelinesResource {
   ): Promise<PaginatedResponse<PipelineStep>> {
     const path = `/repositories/${workspace}/${repoSlug}/pipelines/${pipelineRef(
       pipeline
-    )}/steps${queryString(options)}`;
+    )}/steps${buildListQuery(options)}`;
     return this.client.get<PaginatedResponse<PipelineStep>>(path);
   }
 
   /**
-   * Fetch the raw log for a step. Bitbucket returns plain text (often MB+), so
-   * the response is requested as text rather than JSON.
+   * Fetch the raw log for a step. Bitbucket returns plain text (often MB+).
+   *
+   * When `range` is supplied (a `Range` header value such as `bytes=-262144` for
+   * the last 256 KiB) only that slice is transferred, and the returned
+   * `totalBytes` reflects the full log size from the response headers so callers
+   * can report how much was elided. Bitbucket serves logs as
+   * `application/octet-stream`, so the body is read as text via
+   * {@link BitbucketClient.getText}, which also accepts the `206 Partial
+   * Content` a range request produces.
    */
   async getStepLog(
     workspace: string,
     repoSlug: string,
     pipeline: string,
-    step: string
-  ): Promise<string> {
+    step: string,
+    range?: string
+  ): Promise<{ text: string; totalBytes?: number; partial: boolean }> {
     const path = `/repositories/${workspace}/${repoSlug}/pipelines/${pipelineRef(
       pipeline
     )}/steps/${pipelineRef(step)}/log`;
-    // Bitbucket serves step logs as application/octet-stream; a `text/plain`
-    // Accept negotiation is rejected with 406, so accept any content type and
-    // read the body as text.
-    return this.client.get<string>(path, {
-      responseType: 'text',
-      headers: { Accept: '*/*' },
-    });
+    return this.client.getText(path, range);
   }
 
   /** List the repository's configured pipeline schedules. */
@@ -73,22 +83,11 @@ export class PipelinesResource {
     repoSlug: string,
     options?: ListOptions
   ): Promise<PaginatedResponse<PipelineSchedule>> {
-    const path = `/repositories/${workspace}/${repoSlug}/pipelines_config/schedules${queryString(
+    const path = `/repositories/${workspace}/${repoSlug}/pipelines_config/schedules${buildListQuery(
       options
     )}`;
     return this.client.get<PaginatedResponse<PipelineSchedule>>(path);
   }
-}
-
-/** Build a `?...` query string from common list options (empty when none set). */
-function queryString(options?: ListOptions): string {
-  const params = new URLSearchParams();
-  if (options?.page) params.append('page', options.page.toString());
-  if (options?.pagelen) params.append('pagelen', options.pagelen.toString());
-  if (options?.q) params.append('q', options.q);
-  if (options?.sort) params.append('sort', options.sort);
-  const qs = params.toString();
-  return qs ? `?${qs}` : '';
 }
 
 /**

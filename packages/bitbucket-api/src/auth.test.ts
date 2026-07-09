@@ -22,6 +22,23 @@ describe('resolveCredentials', () => {
     expect(usedLegacy).toBe(true);
   });
 
+  it('prefers an access token (Bearer) over Basic credentials', () => {
+    const { scheme, secret, usedLegacy } = resolveCredentials({
+      accessToken: 'ATCTT-abc',
+      email: 'user@example.com',
+      apiToken: 'token123',
+    });
+    expect(scheme).toBe('bearer');
+    expect(secret).toBe('ATCTT-abc');
+    expect(usedLegacy).toBe(false);
+  });
+
+  it('reports the basic scheme for API-token credentials', () => {
+    expect(resolveCredentials({ email: 'user@example.com', apiToken: 'token123' }).scheme).toBe(
+      'basic'
+    );
+  });
+
   it('throws when identity is missing', () => {
     expect(() => resolveCredentials({ apiToken: 'token' })).toThrow(/email \+ API token/);
   });
@@ -42,6 +59,16 @@ describe('AuthHandler', () => {
     const handler = new AuthHandler({ username: 'testuser', appPassword: 'testpass' });
     const expected = Buffer.from('testuser:testpass').toString('base64');
     expect(handler.getAuthHeader()).toBe(`Basic ${expected}`);
+  });
+
+  it('builds a Bearer header from an access token', () => {
+    const handler = new AuthHandler({ accessToken: 'ATCTT-abc' });
+    expect(handler.getAuthHeader()).toBe('Bearer ATCTT-abc');
+  });
+
+  it('never exposes an access token through serialization', () => {
+    const handler = new AuthHandler({ accessToken: 'ATCTT-super-secret' });
+    expect(JSON.stringify(handler)).not.toContain('ATCTT-super-secret');
   });
 
   it('returns headers that spread cleanly', () => {

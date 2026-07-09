@@ -1,6 +1,7 @@
 import type { BitbucketClient } from '../client.js';
 import type { Repository, PaginatedResponse, ListOptions } from '../types/index.js';
 import { seg } from '../utils/path.js';
+import { buildListQuery, type FieldOptions } from '../utils/query.js';
 
 /**
  * Repositories resource API (read-only surface).
@@ -17,22 +18,15 @@ export class RepositoriesResource {
    * List repositories in a workspace.
    */
   async list(workspace: string, options?: ListOptions): Promise<PaginatedResponse<Repository>> {
-    const params = new URLSearchParams();
-
-    if (options?.page) params.append('page', options.page.toString());
-    if (options?.pagelen) params.append('pagelen', options.pagelen.toString());
-    if (options?.q) params.append('q', options.q);
-    if (options?.sort) params.append('sort', options.sort);
-
-    const path = `/repositories/${seg(workspace)}${params.toString() ? `?${params.toString()}` : ''}`;
+    const path = `/repositories/${seg(workspace)}${buildListQuery(options)}`;
     return this.client.get<PaginatedResponse<Repository>>(path);
   }
 
   /**
    * Get a single repository's metadata.
    */
-  async get(workspace: string, repoSlug: string): Promise<Repository> {
-    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}`;
+  async get(workspace: string, repoSlug: string, options?: FieldOptions): Promise<Repository> {
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}${buildListQuery(options)}`;
     return this.client.get<Repository>(path);
   }
 }

@@ -6,6 +6,7 @@ import {
   listPullRequests,
   listUserPullRequests,
   getPullRequestDiff,
+  getStepLog,
   listBranches,
   listRepositories,
 } from './operations.js';
@@ -21,6 +22,8 @@ describe('operations (HTTP integration)', () => {
   let prHits = 0;
   let lastAuthHeader: string | undefined;
   let lastBranchesUrl: string | undefined;
+  let lastDiffUrl: string | undefined;
+  let lastLogRange: string | undefined;
   const requestedPaths: string[] = [];
 
   beforeAll(async () => {
@@ -79,12 +82,40 @@ describe('operations (HTTP integration)', () => {
       }
 
       if (url.includes('/pullrequests/42/diff')) {
+        lastDiffUrl = url;
         const diff = [
           'diff --git a/x b/x',
           ...Array.from({ length: 500 }, (_, i) => `+line ${i}`),
         ].join('\n');
         res.writeHead(200, { 'content-type': 'text/plain' });
         res.end(diff);
+        return;
+      }
+
+      // Pipeline step log: a 2000-byte body that honors a suffix Range request
+      // (`bytes=-N`) with a 206 + Content-Range so the Range/tail path is
+      // exercised over the real axios stack.
+      if (url.includes('/pipelines/7/steps/') && url.endsWith('/log')) {
+        const full = Array.from({ length: 100 }, (_, i) => `log line ${i}`).join('\n');
+        const totalBytes = Buffer.byteLength(full, 'utf8');
+        const range = req.headers.range;
+        lastLogRange = range;
+        const suffix = range?.match(/^bytes=-(\d+)$/);
+        if (suffix) {
+          const n = Math.min(Number(suffix[1]), totalBytes);
+          const slice = Buffer.from(full, 'utf8').subarray(totalBytes - n);
+          res.writeHead(206, {
+            'content-type': 'application/octet-stream',
+            'content-range': `bytes ${totalBytes - n}-${totalBytes - 1}/${totalBytes}`,
+          });
+          res.end(slice);
+          return;
+        }
+        res.writeHead(200, {
+          'content-type': 'application/octet-stream',
+          'content-length': String(totalBytes),
+        });
+        res.end(full);
         return;
       }
 
@@ -257,6 +288,63 @@ describe('operations (HTTP integration)', () => {
     await listBranches(api(), { workspace: 'acme', repo: 'repo', pagelen: 9999 });
     expect(lastBranchesUrl).toContain('pagelen=100');
     expect(lastBranchesUrl).not.toContain('9999');
+  });
+
+  it('requests server-side partial responses via the fields param', async () => {
+    await listBranches(api(), { workspace: 'acme', repo: 'repo' });
+    // Branches list asks Bitbucket to trim to just the presented paths, and
+    // keeps the envelope keys pagination/total need.
+    expect(lastBranchesUrl).toContain('fields=');
+    const fields = decodeURIComponent(
+      new URL(baseURL + lastBranchesUrl!).searchParams.get('fields')!
+    );
+    expect(fields).toContain('values.name');
+    expect(fields).toContain('values.target.hash');
+    expect(fields).toContain('next');
+    expect(fields).toContain('size');
+  });
+
+  it('scopes a PR diff to a path with reduced context server-side', async () => {
+    await getPullRequestDiff(api(), {
+      workspace: 'acme',
+      repo: 'repo',
+      id: 42,
+      path: 'src/a.ts',
+      context: 0,
+    });
+    const params = new URL(baseURL + lastDiffUrl!).searchParams;
+    expect(params.get('path')).toBe('src/a.ts');
+    expect(params.get('context')).toBe('0');
+  });
+
+  it('tails a step log via a suffix Range instead of downloading it whole', async () => {
+    const result = await getStepLog(api(), {
+      workspace: 'acme',
+      repo: 'repo',
+      pipeline: '7',
+      step: '{s}',
+      maxBytes: 128,
+    });
+    // Sent a suffix Range and got a 206 back, so total_bytes reflects the full
+    // log while only the tail slice was transferred.
+    expect(lastLogRange).toBe('bytes=-128');
+    expect(result.truncated).toBe(true);
+    expect(result.total_bytes).toBeGreaterThan(128);
+    expect(result.text.length).toBeGreaterThan(0);
+  });
+
+  it('fetches the whole step log when grepping (Range would hide earlier matches)', async () => {
+    lastLogRange = 'sentinel';
+    const result = await getStepLog(api(), {
+      workspace: 'acme',
+      repo: 'repo',
+      pipeline: '7',
+      step: '{s}',
+      grep: 'log line 3',
+    });
+    // No Range header on the grep path.
+    expect(lastLogRange).toBeUndefined();
+    expect(result.text.split('\n').every((l) => l.includes('log line 3'))).toBe(true);
   });
 });
 

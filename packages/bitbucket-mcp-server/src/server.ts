@@ -28,8 +28,18 @@ export function createServer(config: CoreConfig): Server {
   );
 
   const logger = createLogger(config.logLevel);
+  let rateLimitWarned = false;
   const context: ToolContext = {
-    api: createApi(config),
+    api: createApi(config, {
+      onRateLimitNearLimit: () => {
+        if (rateLimitWarned) return; // warn once per process, not per request
+        rateLimitWarned = true;
+        logger.warn(
+          'Bitbucket API rate limit nearly reached (under ~20% of the quota remaining); ' +
+            'requests may soon be throttled (429). Consider a workspace Access Token for scaled limits.'
+        );
+      },
+    }),
     defaults: { workspace: config.workspace },
     logger,
   };
