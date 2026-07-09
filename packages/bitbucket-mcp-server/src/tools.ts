@@ -28,6 +28,15 @@ import {
   listSchedules,
   listRepositories,
   getRepository,
+  listDirectory,
+  getFile,
+  getFileHistory,
+  listCommits,
+  getCommit,
+  getCommitDiff,
+  getDiffstat,
+  listTags,
+  getTag,
   type Logger,
   type TargetDefaults,
   type PipelineStatus,
@@ -289,6 +298,148 @@ export const readOnlyTools: Tool[] = [
     description: "List the repository's configured pipeline schedules (cron patterns and targets).",
     inputSchema: schema({ ...workspaceRepo, ...paging }),
   },
+  {
+    name: 'bitbucket_list_directory',
+    description:
+      'List the files and subdirectories at a path in the repo. "commit" is a branch, tag, or commit hash (defaults to the repo main branch); "path" defaults to the root. Use "max_depth" to recurse into subdirectories in one call. Echoes the resolved "ref" and "path".',
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        commit: {
+          type: 'string',
+          description: 'Branch, tag, or commit hash (default: main branch)',
+        },
+        path: { type: 'string', description: 'Directory path (default: repo root)' },
+        max_depth: {
+          type: 'number',
+          description: 'Recurse into subdirectories up to this depth in one call (default 1)',
+        },
+        query: { type: 'string', description: 'Bitbucket query expression (optional)' },
+        sort: { type: 'string', description: 'Sort field (optional)' },
+        ...paging,
+      },
+      ['repo']
+    ),
+  },
+  {
+    name: 'bitbucket_get_file',
+    description:
+      "Get a file's contents at a commit/branch/tag (defaults to the main branch). Capped to max_bytes (default 128KB) and optional max_lines; reports truncation. Binary files return metadata with binary:true and no content.",
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        path: { type: 'string', description: 'File path within the repository' },
+        commit: {
+          type: 'string',
+          description: 'Branch, tag, or commit hash (default: main branch)',
+        },
+        max_lines: { type: 'number', description: 'Cap returned content to this many lines' },
+        max_bytes: {
+          type: 'number',
+          description: 'Cap returned content to this many bytes (default 131072)',
+        },
+      },
+      ['repo', 'path']
+    ),
+  },
+  {
+    name: 'bitbucket_get_file_history',
+    description:
+      'List the commits that modified a file (newest first, following renames), at a commit/branch/tag ref (defaults to the main branch).',
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        path: { type: 'string', description: 'File path within the repository' },
+        commit: {
+          type: 'string',
+          description: 'Branch, tag, or commit hash (default: main branch)',
+        },
+        renames: {
+          type: 'boolean',
+          description: 'Follow renames across history (default true; pass false to disable)',
+        },
+        ...paging,
+      },
+      ['repo', 'path']
+    ),
+  },
+  {
+    name: 'bitbucket_list_commits',
+    description:
+      'List commits (short hashes, message, author, date). "at" scopes to commits reachable from a branch/tag/hash; "path" filters to commits that touched a file. Note: no total count (git-backed).',
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        at: { type: 'string', description: 'Branch, tag, or commit hash to list commits from' },
+        path: { type: 'string', description: 'Only commits that modified this path' },
+        ...paging,
+      },
+      ['repo']
+    ),
+  },
+  {
+    name: 'bitbucket_get_commit',
+    description: 'Get a single commit by hash (or ref).',
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        commit: { type: 'string', description: 'Commit hash or ref' },
+      },
+      ['repo', 'commit']
+    ),
+  },
+  {
+    name: 'bitbucket_get_commit_diff',
+    description:
+      'Get the diff for a commit hash or an "a..b" range, capped to max_lines (default 200) with a files-changed count. Scope with path (one or more files) and context (lines per hunk).',
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        spec: { type: 'string', description: 'Commit hash or "a..b" range spec' },
+        max_lines: { type: 'number', description: 'Max diff lines to return (default 200)' },
+        path: {
+          type: ['string', 'array'],
+          items: { type: 'string' },
+          description: 'Restrict the diff to one or more file paths',
+        },
+        context: { type: 'number', description: 'Lines of context around each hunk' },
+      },
+      ['repo', 'spec']
+    ),
+  },
+  {
+    name: 'bitbucket_get_diffstat',
+    description:
+      'Get the per-file change summary (status, lines added/removed) for a commit hash or "a..b" range — a cheap "what changed" without the diff body.',
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        spec: { type: 'string', description: 'Commit hash or "a..b" range spec' },
+        path: { type: 'string', description: 'Restrict to a single file path' },
+        ...paging,
+      },
+      ['repo', 'spec']
+    ),
+  },
+  {
+    name: 'bitbucket_list_tags',
+    description:
+      'List repository tags with their target commit (and message/tagger for annotated tags).',
+    inputSchema: schema({
+      ...workspaceRepo,
+      query: { type: 'string', description: 'Bitbucket query expression (optional)' },
+      sort: { type: 'string', description: 'Sort field, e.g. -target.date (optional)' },
+      ...paging,
+    }),
+  },
+  {
+    name: 'bitbucket_get_tag',
+    description: 'Get a single tag by name (resolves it to its target commit).',
+    inputSchema: schema({ ...workspaceRepo, name: { type: 'string', description: 'Tag name' } }, [
+      'repo',
+      'name',
+    ]),
+  },
 ];
 
 // Handlers --------------------------------------------------------------------
@@ -487,5 +638,105 @@ export const handlers: Record<string, Handler> = {
         pagelen: args.pagelen as number | undefined,
       })
     );
+  },
+
+  bitbucket_list_directory: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await listDirectory(ctx.api, {
+        workspace,
+        repo,
+        commit: args.commit as string | undefined,
+        path: args.path as string | undefined,
+        maxDepth: args.max_depth as number | undefined,
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+        query: args.query as string | undefined,
+        sort: args.sort as string | undefined,
+      })
+    );
+  },
+
+  bitbucket_get_file: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await getFile(ctx.api, {
+        workspace,
+        repo,
+        path: str(args, 'path'),
+        commit: args.commit as string | undefined,
+        maxLines: args.max_lines as number | undefined,
+        maxBytes: args.max_bytes as number | undefined,
+      })
+    );
+  },
+
+  bitbucket_get_file_history: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await getFileHistory(ctx.api, {
+        workspace,
+        repo,
+        path: str(args, 'path'),
+        commit: args.commit as string | undefined,
+        renames: args.renames as boolean | undefined,
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+      })
+    );
+  },
+
+  bitbucket_list_commits: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await listCommits(ctx.api, {
+        workspace,
+        repo,
+        at: args.at as string | undefined,
+        path: args.path as string | undefined,
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+      })
+    );
+  },
+
+  bitbucket_get_commit: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(await getCommit(ctx.api, { workspace, repo, commit: str(args, 'commit') }));
+  },
+
+  bitbucket_get_commit_diff: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await getCommitDiff(ctx.api, {
+        workspace,
+        repo,
+        spec: str(args, 'spec'),
+        maxLines: args.max_lines as number | undefined,
+        path: args.path as string | string[] | undefined,
+        context: args.context as number | undefined,
+      })
+    );
+  },
+
+  bitbucket_get_diffstat: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await getDiffstat(ctx.api, {
+        workspace,
+        repo,
+        spec: str(args, 'spec'),
+        path: args.path as string | undefined,
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+      })
+    );
+  },
+
+  bitbucket_list_tags: async (ctx, args) => json(await listTags(ctx.api, listArgs(ctx, args))),
+
+  bitbucket_get_tag: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(await getTag(ctx.api, { workspace, repo, name: str(args, 'name') }));
   },
 };

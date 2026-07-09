@@ -12,6 +12,11 @@ import {
   presentPipeline,
   presentPipelineStep,
   presentSchedule,
+  presentTreeEntry,
+  presentFileMeta,
+  presentDiffstat,
+  presentTag,
+  presentFileHistoryEntry,
   objectFields,
   listFields,
   PR_SUMMARY_FIELDS,
@@ -26,6 +31,11 @@ import {
   PIPELINE_DETAIL_FIELDS,
   PIPELINE_STEP_FIELDS,
   SCHEDULE_FIELDS,
+  TREE_ENTRY_FIELDS,
+  FILE_META_FIELDS,
+  DIFFSTAT_FIELDS,
+  TAG_FIELDS,
+  FILE_HISTORY_FIELDS,
 } from './presenters.js';
 
 /**
@@ -193,6 +203,63 @@ const scheduleFixture = {
   type: 'pipeline_schedule',
 } as never;
 
+const treeEntryFixture = {
+  path: 'src/index.ts',
+  type: 'commit_file',
+  size: 2048,
+  mimetype: 'text/plain',
+  commit: { hash: 'deadbeefcafe0000', type: 'commit' },
+  attributes: [],
+  links: { self: {} },
+} as never;
+
+const fileMetaFixture = {
+  path: 'src/index.ts',
+  type: 'commit_file',
+  size: 2048,
+  mimetype: 'text/plain',
+  encoding: 'utf-8',
+  commit: { hash: 'deadbeefcafe0000', type: 'commit', links: {} },
+  links: { html: { href: 'https://bitbucket.org/acme/widgets/src/main/src/index.ts' }, self: {} },
+} as never;
+
+const diffstatFixture = {
+  type: 'diffstat',
+  status: 'renamed',
+  lines_added: 10,
+  lines_removed: 4,
+  old: { path: 'src/old.ts', type: 'commit_file' },
+  new: { path: 'src/new.ts', type: 'commit_file' },
+} as never;
+
+const tagFixture = {
+  name: 'v1.2.0',
+  target: {
+    hash: 'deadbeefcafe0000',
+    date: '2026-07-01T10:00:00Z',
+    message: 'release commit',
+    type: 'commit',
+  },
+  message: 'Release 1.2.0\n',
+  date: '2026-07-02T10:00:00Z',
+  tagger: { raw: 'Ada <ada@x.io>', user: { display_name: 'Ada' } },
+  links: { html: { href: 'https://bitbucket.org/acme/widgets/commits/tag/v1.2.0' }, self: {} },
+  type: 'tag',
+} as never;
+
+const fileHistoryFixture = {
+  path: 'src/index.ts',
+  type: 'commit_file',
+  size: 2048,
+  commit: {
+    hash: 'deadbeefcafe0000',
+    message: 'edit index\n',
+    author: { raw: 'Ada <ada@x.io>', user: { display_name: 'Ada' } },
+    date: '2026-07-01T10:00:00Z',
+  },
+  links: { self: {} },
+} as never;
+
 describe('presenter field sets stay in sync with presenters', () => {
   const cases: Array<{
     name: string;
@@ -239,6 +306,31 @@ describe('presenter field sets stay in sync with presenters', () => {
       present: presentPipeline,
       fields: PIPELINE_DETAIL_FIELDS,
       fixture: pipelineFixture,
+    },
+    {
+      name: 'tree entry',
+      present: presentTreeEntry,
+      fields: TREE_ENTRY_FIELDS,
+      fixture: treeEntryFixture,
+    },
+    {
+      name: 'file meta',
+      present: presentFileMeta,
+      fields: FILE_META_FIELDS,
+      fixture: fileMetaFixture,
+    },
+    {
+      name: 'diffstat',
+      present: presentDiffstat,
+      fields: DIFFSTAT_FIELDS,
+      fixture: diffstatFixture,
+    },
+    { name: 'tag', present: presentTag, fields: TAG_FIELDS, fixture: tagFixture },
+    {
+      name: 'file history entry',
+      present: presentFileHistoryEntry,
+      fields: FILE_HISTORY_FIELDS,
+      fixture: fileHistoryFixture,
     },
     {
       name: 'pipeline step',

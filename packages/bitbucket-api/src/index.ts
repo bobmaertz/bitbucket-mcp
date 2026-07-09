@@ -12,6 +12,9 @@ import { CommentsResource } from './resources/comments.js';
 import { TasksResource } from './resources/tasks.js';
 import { BranchesResource } from './resources/branches.js';
 import { PipelinesResource } from './resources/pipelines.js';
+import { SourceResource } from './resources/source.js';
+import { CommitsResource } from './resources/commits.js';
+import { TagsResource } from './resources/tags.js';
 
 /**
  * Main Bitbucket API client with all resource modules
@@ -27,6 +30,9 @@ export class BitbucketAPI {
   public tasks: TasksResource;
   public branches: BranchesResource;
   public pipelines: PipelinesResource;
+  public source: SourceResource;
+  public commits: CommitsResource;
+  public tags: TagsResource;
 
   constructor(config: ClientConfig) {
     this.client = new BitbucketClient(config);
@@ -40,6 +46,9 @@ export class BitbucketAPI {
     this.tasks = new TasksResource(this.client);
     this.branches = new BranchesResource(this.client);
     this.pipelines = new PipelinesResource(this.client);
+    this.source = new SourceResource(this.client);
+    this.commits = new CommitsResource(this.client);
+    this.tags = new TagsResource(this.client);
   }
 
   /**

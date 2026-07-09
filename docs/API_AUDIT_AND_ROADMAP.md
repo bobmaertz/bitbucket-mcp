@@ -113,7 +113,10 @@ fit for a least-privilege read-only server.
 Four phases, each independently shippable. Tool names follow the existing `bitbucket_<verb>_<noun>`
 convention; all new tools are read-only GETs behind the existing presenter/truncation patterns.
 
-### Phase 1 — Efficiency & hygiene (no new API surface)
+**Status:** Phase 1 ✅ delivered · Phase 2 ✅ delivered · Phases 3–4 planned. The surface is now
+**27 read-only tools**.
+
+### Phase 1 — Efficiency & hygiene (no new API surface) — ✅ delivered
 
 | Item | Change                                                                                                                                                       |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -123,7 +126,14 @@ convention; all new tools are read-only GETs behind the existing presenter/trunc
 | 1.4  | Bearer-token auth mode (workspace/project/repo access tokens) alongside Basic; read `X-RateLimit-NearLimit` and annotate tool responses when near the limit. |
 | 1.5  | Docs sync (see § 5) and removal countdown for app-password fallback.                                                                                         |
 
-### Phase 2 — Source & commits (8 new tools)
+### Phase 2 — Source & commits (9 new tools) — ✅ delivered
+
+Delivered as `bitbucket_list_directory`, `bitbucket_get_file`, `bitbucket_get_file_history`,
+`bitbucket_list_commits`, `bitbucket_get_commit`, `bitbucket_get_commit_diff`,
+`bitbucket_get_diffstat`, `bitbucket_list_tags`, and `bitbucket_get_tag`. Source-browsing tools
+default `commit` to the repo's main branch (resolved once, then echoed as `ref`); `get_file` caps
+content and flags binary files; all send server-side `fields` and reuse the shared diff-truncation
+helper.
 
 | Tool                         | Endpoint                                                                                                                                                   |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -11,6 +11,11 @@ import type {
   PipelineSchedule,
   PipelineTarget,
   PipelineVariable,
+  TreeEntry,
+  FileMeta,
+  DiffStat,
+  Tag,
+  FileHistoryEntry,
 } from '@bobmaertz/bitbucket-api';
 
 /**
@@ -180,6 +185,71 @@ export function presentCommit(commit: Commit): Record<string, unknown> {
     message: commit.message?.trim(),
     author: commit.author?.raw,
     date: commit.date,
+  });
+}
+
+// Source / commits / tags -----------------------------------------------------
+
+/** Normalize a `commit_file`/`commit_directory` discriminator to `file`/`dir`. */
+function entryKind(type: string | undefined): 'file' | 'dir' {
+  return type === 'commit_directory' ? 'dir' : 'file';
+}
+
+/** Lean directory-entry shape. `size`/`mimetype` apply to files only. */
+export function presentTreeEntry(entry: TreeEntry): Record<string, unknown> {
+  return compact({
+    path: entry.path,
+    type: entryKind(entry.type),
+    size: entry.size,
+    mimetype: entry.mimetype ?? undefined,
+  });
+}
+
+/** File metadata (size/mimetype/commit) without the bytes. */
+export function presentFileMeta(meta: FileMeta): Record<string, unknown> {
+  return compact({
+    path: meta.path,
+    size: meta.size,
+    mimetype: meta.mimetype ?? undefined,
+    commit: shortHash(meta.commit?.hash),
+    url: htmlUrl(meta.links),
+  });
+}
+
+/**
+ * One file's change summary. `path` is the post-change path; `old_path` is added
+ * only for renames so a caller can see the move.
+ */
+export function presentDiffstat(stat: DiffStat): Record<string, unknown> {
+  return compact({
+    status: stat.status,
+    path: stat.new?.path ?? stat.old?.path,
+    old_path: stat.status === 'renamed' ? stat.old?.path : undefined,
+    lines_added: stat.lines_added,
+    lines_removed: stat.lines_removed,
+  });
+}
+
+/**
+ * Tag shape. `date`/`message`/`tagger` are populated for annotated tags; a
+ * lightweight tag falls back to the target commit's date.
+ */
+export function presentTag(tag: Tag): Record<string, unknown> {
+  return compact({
+    name: tag.name,
+    target_hash: shortHash(tag.target?.hash),
+    date: tag.date ?? tag.target?.date,
+    message: tag.message?.trim(),
+    tagger: tag.tagger?.user?.display_name ?? tag.tagger?.raw,
+    url: htmlUrl(tag.links),
+  });
+}
+
+/** A file-history entry: the commit that touched the file, plus its path then. */
+export function presentFileHistoryEntry(entry: FileHistoryEntry): Record<string, unknown> {
+  return compact({
+    ...presentCommit(entry.commit),
+    path: entry.path,
   });
 }
 
@@ -375,6 +445,48 @@ export const REPOSITORY_FIELDS = [
 
 /** Fields read by {@link presentCommit}. */
 export const COMMIT_FIELDS = ['hash', 'message', 'author.raw', 'date'] as const;
+
+/** Fields read by {@link presentTreeEntry}. */
+export const TREE_ENTRY_FIELDS = ['path', 'type', 'size', 'mimetype'] as const;
+
+/** Fields read by {@link presentFileMeta}. */
+export const FILE_META_FIELDS = [
+  'path',
+  'size',
+  'mimetype',
+  'commit.hash',
+  'links.html.href',
+] as const;
+
+/** Fields read by {@link presentDiffstat}. */
+export const DIFFSTAT_FIELDS = [
+  'status',
+  'new.path',
+  'old.path',
+  'lines_added',
+  'lines_removed',
+] as const;
+
+/** Fields read by {@link presentTag}. */
+export const TAG_FIELDS = [
+  'name',
+  'target.hash',
+  'target.date',
+  'date',
+  'message',
+  'tagger.user.display_name',
+  'tagger.raw',
+  'links.html.href',
+] as const;
+
+/** Fields read by {@link presentFileHistoryEntry}. */
+export const FILE_HISTORY_FIELDS = [
+  'path',
+  'commit.hash',
+  'commit.message',
+  'commit.author.raw',
+  'commit.date',
+] as const;
 
 /** Fields read by {@link presentPipelineSummary} (and {@link presentTarget}). */
 export const PIPELINE_SUMMARY_FIELDS = [

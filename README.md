@@ -1,6 +1,6 @@
 # Bitbucket MCP Server
 
-Read-only [MCP](https://modelcontextprotocol.io/) server for **Bitbucket Cloud** — lets Claude and other LLM clients browse repositories, pull requests, comments, tasks, branches, and pipelines. Token-sparse output, no write access, credential never leaves the client layer.
+Read-only [MCP](https://modelcontextprotocol.io/) server for **Bitbucket Cloud** — lets Claude and other LLM clients browse repositories, source files, commits, pull requests, comments, tasks, branches, tags, and pipelines. Token-sparse output, no write access, credential never leaves the client layer.
 
 ## Quickstart
 
@@ -41,32 +41,43 @@ Auth is resolved in precedence order: an **access token** (Bearer) wins, then th
 
 Read-only. `workspace` defaults to `BITBUCKET_WORKSPACE`; repo-scoped tools require `repo`.
 
-| Tool                                | Key inputs                                                                       |
-| ----------------------------------- | -------------------------------------------------------------------------------- |
-| `bitbucket_list_repositories`       | `workspace?`, `query?`, `sort?`, `page?`                                         |
-| `bitbucket_get_repository`          | `workspace?`, `repo`                                                             |
-| `bitbucket_list_pull_requests`      | `repo`, `state?` (default `OPEN`), `query?`, `page?`                             |
-| `bitbucket_list_user_pull_requests` | `workspace?`, `user?` (default: me), `state?`, `sort?`, `pagelen?`, `max_pages?` |
-| `bitbucket_get_pull_request`        | `repo`, `id`                                                                     |
-| `bitbucket_get_pr_commits`          | `repo`, `id`, `page?`                                                            |
-| `bitbucket_get_pr_diff`             | `repo`, `id`, `max_lines?` (default 200), `path?`, `context?`                    |
-| `bitbucket_list_pr_comments`        | `repo`, `id`, `page?`                                                            |
-| `bitbucket_get_comment`             | `repo`, `pr_id`, `comment_id`                                                    |
-| `bitbucket_list_pr_tasks`           | `repo`, `id`, `page?`                                                            |
-| `bitbucket_get_task`                | `repo`, `pr_id`, `task_id`                                                       |
-| `bitbucket_list_branches`           | `repo`, `query?`, `sort?`, `page?`                                               |
-| `bitbucket_get_branch`              | `repo`, `name`                                                                   |
-| `bitbucket_list_pipelines`          | `repo`, `branch?`, `pull_request_id?`, `status?`, `sort?`, `page?`               |
-| `bitbucket_get_pipeline`            | `repo`, `pipeline` (build number or UUID)                                        |
-| `bitbucket_list_pipeline_steps`     | `repo`, `pipeline`, `page?`                                                      |
-| `bitbucket_get_step_log`            | `repo`, `pipeline`, `step`, `tail?`, `grep?`, `max_bytes?`                       |
-| `bitbucket_list_schedules`          | `repo`, `page?`                                                                  |
+| Tool                                | Key inputs                                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------------------- |
+| `bitbucket_list_repositories`       | `workspace?`, `query?`, `sort?`, `page?`                                            |
+| `bitbucket_get_repository`          | `workspace?`, `repo`                                                                |
+| `bitbucket_list_pull_requests`      | `repo`, `state?` (default `OPEN`), `query?`, `page?`                                |
+| `bitbucket_list_user_pull_requests` | `workspace?`, `user?` (default: me), `state?`, `sort?`, `pagelen?`, `max_pages?`    |
+| `bitbucket_get_pull_request`        | `repo`, `id`                                                                        |
+| `bitbucket_get_pr_commits`          | `repo`, `id`, `page?`                                                               |
+| `bitbucket_get_pr_diff`             | `repo`, `id`, `max_lines?` (default 200), `path?`, `context?`                       |
+| `bitbucket_list_pr_comments`        | `repo`, `id`, `page?`                                                               |
+| `bitbucket_get_comment`             | `repo`, `pr_id`, `comment_id`                                                       |
+| `bitbucket_list_pr_tasks`           | `repo`, `id`, `page?`                                                               |
+| `bitbucket_get_task`                | `repo`, `pr_id`, `task_id`                                                          |
+| `bitbucket_list_branches`           | `repo`, `query?`, `sort?`, `page?`                                                  |
+| `bitbucket_get_branch`              | `repo`, `name`                                                                      |
+| `bitbucket_list_pipelines`          | `repo`, `branch?`, `pull_request_id?`, `status?`, `sort?`, `page?`                  |
+| `bitbucket_get_pipeline`            | `repo`, `pipeline` (build number or UUID)                                           |
+| `bitbucket_list_pipeline_steps`     | `repo`, `pipeline`, `page?`                                                         |
+| `bitbucket_get_step_log`            | `repo`, `pipeline`, `step`, `tail?`, `grep?`, `max_bytes?`                          |
+| `bitbucket_list_schedules`          | `repo`, `page?`                                                                     |
+| `bitbucket_list_directory`          | `repo`, `commit?` (default main), `path?`, `max_depth?`, `query?`, `sort?`, `page?` |
+| `bitbucket_get_file`                | `repo`, `path`, `commit?` (default main), `max_lines?`, `max_bytes?`                |
+| `bitbucket_get_file_history`        | `repo`, `path`, `commit?` (default main), `renames?`, `page?`                       |
+| `bitbucket_list_commits`            | `repo`, `at?`, `path?`, `page?`                                                     |
+| `bitbucket_get_commit`              | `repo`, `commit`                                                                    |
+| `bitbucket_get_commit_diff`         | `repo`, `spec` (hash or `a..b`), `max_lines?`, `path?`, `context?`                  |
+| `bitbucket_get_diffstat`            | `repo`, `spec` (hash or `a..b`), `path?`, `page?`                                   |
+| `bitbucket_list_tags`               | `repo`, `query?`, `sort?`, `page?`                                                  |
+| `bitbucket_get_tag`                 | `repo`, `name`                                                                      |
 
 `bitbucket_list_repositories` needs no args: omit `workspace` to list the configured `BITBUCKET_WORKSPACE`, or pass `workspace` to scope to another. There is no cross-workspace listing — Atlassian retired both `GET /repositories` and `GET /workspaces` under CHANGE-2770.
 
 `bitbucket_list_user_pull_requests` lists **all pull requests authored by a user across a whole workspace in one aggregated call** — no more listing every repo and querying each. It auto-follows pagination (up to `max_pages`, default 10) and sorts newest-updated first (`-updated_on`). Omit `user` for the authenticated account ("my" PRs); otherwise `user` must be an account UUID (`{…}`) or Atlassian `account_id` — bare usernames were removed by Bitbucket. It covers **authored** PRs only; reviewer-only involvement isn't included. Backed by `GET /workspaces/{workspace}/pullrequests/{selected_user}`.
 
 `bitbucket_get_pr_diff` scopes the diff server-side: pass `path` (one or more files) and/or `context` (lines around each hunk) to fetch just what you need instead of downloading the whole diff and trimming it.
+
+The source and commit tools give an agent eyes on the repository. `bitbucket_list_directory` and `bitbucket_get_file` default `commit` to the repo's main branch (and echo the resolved `ref`), so you can browse without knowing the default branch; use `max_depth` to pull a recursive tree in one call. `bitbucket_get_file` caps content by `max_bytes`/`max_lines` and returns `binary: true` (no content) for binary files. For "what changed", prefer `bitbucket_get_diffstat` (a cheap per-file summary) before pulling `bitbucket_get_commit_diff`, which supports the same `path`/`context` scoping as the PR diff.
 
 ### Efficiency
 

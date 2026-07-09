@@ -19,6 +19,11 @@ import {
   presentPipelineStep,
   presentSchedule,
   presentRepository,
+  presentTreeEntry,
+  presentFileMeta,
+  presentDiffstat,
+  presentTag,
+  presentFileHistoryEntry,
   objectFields,
   listFields,
   PR_SUMMARY_FIELDS,
@@ -33,6 +38,11 @@ import {
   PIPELINE_DETAIL_FIELDS,
   PIPELINE_STEP_FIELDS,
   SCHEDULE_FIELDS,
+  TREE_ENTRY_FIELDS,
+  FILE_META_FIELDS,
+  DIFFSTAT_FIELDS,
+  TAG_FIELDS,
+  FILE_HISTORY_FIELDS,
 } from './presenters.js';
 
 /**
@@ -271,6 +281,27 @@ export async function getPullRequestCommits(
  * rather than downloading everything and trimming. When `path` narrows the diff
  * to specific files, `files_changed` reflects only what Bitbucket returned.
  */
+export interface TruncatedDiff {
+  diff: string;
+  truncated: boolean;
+  total_lines: number;
+  files_changed: number;
+}
+
+const DEFAULT_DIFF_MAX_LINES = 200;
+
+/**
+ * Cap a raw unified diff to `maxLines` and count the files it touches (one per
+ * `diff --git` header). Shared by the PR and commit diff operations.
+ */
+function truncateDiff(raw: string, maxLines: number): TruncatedDiff {
+  const lines = raw.split('\n');
+  const filesChanged = lines.filter((l) => l.startsWith('diff --git')).length;
+  const truncated = lines.length > maxLines;
+  const diff = truncated ? lines.slice(0, maxLines).join('\n') : raw;
+  return { diff, truncated, total_lines: lines.length, files_changed: filesChanged };
+}
+
 export async function getPullRequestDiff(
   api: BitbucketAPI,
   params: {
@@ -281,17 +312,12 @@ export async function getPullRequestDiff(
     path?: string | string[];
     context?: number;
   }
-): Promise<{ diff: string; truncated: boolean; total_lines: number; files_changed: number }> {
-  const maxLines = params.maxLines ?? 200;
+): Promise<TruncatedDiff> {
   const raw = await api.pullRequests.getDiff(params.workspace, params.repo, params.id, {
     path: params.path,
     context: params.context,
   });
-  const lines = raw.split('\n');
-  const filesChanged = lines.filter((l) => l.startsWith('diff --git')).length;
-  const truncated = lines.length > maxLines;
-  const diff = truncated ? lines.slice(0, maxLines).join('\n') : raw;
-  return { diff, truncated, total_lines: lines.length, files_changed: filesChanged };
+  return truncateDiff(raw, params.maxLines ?? DEFAULT_DIFF_MAX_LINES);
 }
 
 export async function listPullRequestComments(
@@ -604,4 +630,315 @@ export async function getRepository(
     fields: objectFields(REPOSITORY_FIELDS),
   });
   return presentRepository(repo);
+}
+
+// Source / commits / tags -----------------------------------------------------
+
+/** Default byte window pulled from the head of a file when no cap is given. */
+const DEFAULT_FILE_BYTES = 128 * 1024;
+
+/** A page that also echoes the resolved ref and path it was taken at. */
+type RefPage = Page<Record<string, unknown>> & { ref: string; path: string };
+
+/**
+ * Resolve a source ref: return the caller's value, or fall back to the repo's
+ * default branch (one cheap metadata call) so browsing tools work without the
+ * caller knowing the main branch name.
+ */
+async function resolveRef(
+  api: BitbucketAPI,
+  workspace: string,
+  repo: string,
+  ref?: string
+): Promise<string> {
+  const trimmed = ref?.trim();
+  if (trimmed) return trimmed;
+  const meta = await api.repositories.get(workspace, repo, { fields: 'mainbranch.name' });
+  const name = meta.mainbranch?.name;
+  if (!name) {
+    throw new Error(
+      'Could not resolve the default branch; pass an explicit commit, branch, or tag ref'
+    );
+  }
+  return name;
+}
+
+/**
+ * List a directory's entries at a commit/branch/tag (defaults to the repo's
+ * main branch). `max_depth` recurses into subdirectories in one call. Echoes the
+ * resolved `ref` and `path` so a caller that relied on the default knows what
+ * was listed.
+ */
+export async function listDirectory(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    commit?: string;
+    path?: string;
+    maxDepth?: number;
+    page?: number;
+    pagelen?: number;
+    query?: string;
+    sort?: string;
+  }
+): Promise<RefPage> {
+  const ref = await resolveRef(api, params.workspace, params.repo, params.commit);
+  const path = params.path ?? '';
+  const page = params.page ?? 1;
+  const response = await api.source.listDirectory(params.workspace, params.repo, ref, path, {
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    q: params.query,
+    sort: params.sort,
+    maxDepth: params.maxDepth,
+    fields: listFields(TREE_ENTRY_FIELDS),
+  });
+  return { ...toPage(response, presentTreeEntry, page), ref, path };
+}
+
+export interface FileContent {
+  path: string;
+  ref: string;
+  size?: number;
+  mimetype?: string;
+  commit?: string;
+  url?: string;
+  /** Present for text files; omitted for binary. */
+  content?: string;
+  /** True for binary files, whose bytes are not returned as text. */
+  binary?: boolean;
+  truncated: boolean;
+  total_bytes: number;
+}
+
+/**
+ * Fetch a file's contents at a commit/branch/tag (defaults to the main branch),
+ * capped to `maxBytes` (fetched via a prefix `Range` when supported) and
+ * optionally `maxLines`. Binary files (detected by a NUL byte) return metadata
+ * with `binary: true` and no `content`, since raw bytes as text are useless to
+ * an LLM.
+ */
+export async function getFile(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    commit?: string;
+    path: string;
+    maxLines?: number;
+    maxBytes?: number;
+  }
+): Promise<FileContent> {
+  if (!params.path) {
+    throw new Error('path is required');
+  }
+  const ref = await resolveRef(api, params.workspace, params.repo, params.commit);
+  const meta = await api.source.getFileMeta(params.workspace, params.repo, ref, params.path, {
+    fields: objectFields(FILE_META_FIELDS),
+  });
+  const presented = presentFileMeta(meta) as {
+    path?: string;
+    size?: number;
+    mimetype?: string;
+    commit?: string;
+    url?: string;
+  };
+
+  const maxBytes = Math.max(1, Math.floor(params.maxBytes ?? DEFAULT_FILE_BYTES));
+  let fetched: { text: string; totalBytes?: number; partial: boolean };
+  try {
+    fetched = await api.source.getFileContent(
+      params.workspace,
+      params.repo,
+      ref,
+      params.path,
+      `bytes=0-${maxBytes - 1}`
+    );
+  } catch (error) {
+    if (error instanceof BitbucketError && error.statusCode === 416) {
+      fetched = await api.source.getFileContent(params.workspace, params.repo, ref, params.path);
+    } else {
+      throw error;
+    }
+  }
+
+  const raw = fetched.text;
+  const fetchedBytes = Buffer.byteLength(raw, 'utf8');
+  const totalBytes = fetched.totalBytes ?? meta.size ?? fetchedBytes;
+  const base = {
+    path: presented.path ?? params.path,
+    ref,
+    size: presented.size,
+    mimetype: presented.mimetype,
+    commit: presented.commit,
+    url: presented.url,
+  };
+
+  // A NUL byte means binary content — don't return it as text.
+  if (raw.includes('\u0000')) {
+    return { ...base, binary: true, truncated: false, total_bytes: totalBytes };
+  }
+
+  let truncated = fetched.partial || totalBytes > fetchedBytes;
+  let lines = raw.split('\n');
+  if (params.maxLines && lines.length > params.maxLines) {
+    lines = lines.slice(0, params.maxLines);
+    truncated = true;
+  }
+
+  let text = lines.join('\n');
+  // If the server ignored the Range, enforce the byte cap client-side.
+  if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+    text = Buffer.from(text, 'utf8').subarray(0, maxBytes).toString('utf8');
+    truncated = true;
+  }
+
+  return { ...base, content: text, truncated, total_bytes: totalBytes };
+}
+
+/**
+ * List the commits that modified a file (newest first, following renames by
+ * default) at a commit/branch/tag ref (defaults to the main branch).
+ */
+export async function getFileHistory(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    commit?: string;
+    path: string;
+    renames?: boolean;
+    page?: number;
+    pagelen?: number;
+  }
+): Promise<RefPage> {
+  if (!params.path) {
+    throw new Error('path is required');
+  }
+  const ref = await resolveRef(api, params.workspace, params.repo, params.commit);
+  const page = params.page ?? 1;
+  const response = await api.source.getFileHistory(
+    params.workspace,
+    params.repo,
+    ref,
+    params.path,
+    {
+      page,
+      pagelen: clampPagelen(params.pagelen),
+      renames: params.renames,
+      fields: listFields(FILE_HISTORY_FIELDS),
+    }
+  );
+  return { ...toPage(response, presentFileHistoryEntry, page), ref, path: params.path };
+}
+
+/**
+ * List commits. `at` (a branch/tag/hash) scopes to commits reachable from that
+ * ref; `path` filters to commits touching a file. Note the commits endpoint is
+ * git-backed and omits a total count.
+ */
+export async function listCommits(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    at?: string;
+    path?: string;
+    page?: number;
+    pagelen?: number;
+  }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.commits.list(params.workspace, params.repo, {
+    include: params.at ? [params.at] : undefined,
+    path: params.path,
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    fields: listFields(COMMIT_FIELDS),
+  });
+  return toPage(response, presentCommit, page);
+}
+
+export async function getCommit(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; commit: string }
+): Promise<Record<string, unknown>> {
+  const commit = await api.commits.get(params.workspace, params.repo, params.commit, {
+    fields: objectFields(COMMIT_FIELDS),
+  });
+  return presentCommit(commit);
+}
+
+/**
+ * Get the diff for a commit hash or `a..b` spec, capped to `maxLines`. `path`
+ * scopes to specific files and `context` sets hunk context — both trim the
+ * payload server-side.
+ */
+export async function getCommitDiff(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    spec: string;
+    maxLines?: number;
+    path?: string | string[];
+    context?: number;
+  }
+): Promise<TruncatedDiff> {
+  const raw = await api.commits.getDiff(params.workspace, params.repo, params.spec, {
+    path: params.path,
+    context: params.context,
+  });
+  return truncateDiff(raw, params.maxLines ?? DEFAULT_DIFF_MAX_LINES);
+}
+
+/**
+ * Get the per-file diffstat (change kind + lines added/removed) for a commit
+ * hash or `a..b` spec — a cheap "what changed" summary without the diff body.
+ */
+export async function getDiffstat(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    spec: string;
+    path?: string;
+    page?: number;
+    pagelen?: number;
+  }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.commits.getDiffstat(params.workspace, params.repo, params.spec, {
+    path: params.path,
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    fields: listFields(DIFFSTAT_FIELDS),
+  });
+  return toPage(response, presentDiffstat, page);
+}
+
+export async function listTags(
+  api: BitbucketAPI,
+  params: ListParams
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.tags.list(params.workspace, params.repo, {
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    q: params.query,
+    sort: params.sort,
+    fields: listFields(TAG_FIELDS),
+  });
+  return toPage(response, presentTag, page);
+}
+
+export async function getTag(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; name: string }
+): Promise<Record<string, unknown>> {
+  const tag = await api.tags.get(params.workspace, params.repo, params.name, {
+    fields: objectFields(TAG_FIELDS),
+  });
+  return presentTag(tag);
 }
