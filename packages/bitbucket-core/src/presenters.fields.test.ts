@@ -20,6 +20,12 @@ import {
   presentCommitStatus,
   presentPrActivity,
   presentTestCase,
+  presentWorkspace,
+  presentProject,
+  presentDeployment,
+  presentEnvironment,
+  presentBranchingModel,
+  presentWorkspaceMember,
   objectFields,
   listFields,
   PR_SUMMARY_FIELDS,
@@ -42,6 +48,12 @@ import {
   COMMIT_STATUS_FIELDS,
   PR_ACTIVITY_FIELDS,
   TEST_CASE_FIELDS,
+  WORKSPACE_FIELDS,
+  PROJECT_FIELDS,
+  DEPLOYMENT_FIELDS,
+  ENVIRONMENT_FIELDS,
+  BRANCHING_MODEL_FIELDS,
+  WORKSPACE_MEMBER_FIELDS,
 } from './presenters.js';
 
 /**
@@ -319,6 +331,60 @@ const activityUpdateFixture = {
   },
 } as never;
 
+const workspaceFixture = {
+  slug: 'acme',
+  name: 'Acme Inc',
+  uuid: '{ws}',
+  is_private: true,
+  links: { html: { href: 'https://bitbucket.org/acme/' }, self: {} },
+  type: 'workspace',
+} as never;
+
+const projectFixture = {
+  key: 'WID',
+  name: 'Widgets',
+  uuid: '{proj}',
+  description: 'Widget project',
+  is_private: true,
+  created_on: '2026-06-01T10:00:00Z',
+  updated_on: '2026-07-01T10:00:00Z',
+  links: { html: { href: 'https://bitbucket.org/acme/workspace/projects/WID' }, self: {} },
+  type: 'project',
+} as never;
+
+const deploymentFixture = {
+  uuid: '{dep}',
+  state: { name: 'IN_PROGRESS', status: { name: 'COMPLETED' } },
+  environment: { uuid: '{env}', name: 'Production' },
+  release: { name: 'v1.2.0', commit: { hash: 'deadbeefcafe0000' } },
+  last_update_time: '2026-07-01T10:00:00Z',
+  type: 'deployment',
+} as never;
+
+const environmentFixture = {
+  uuid: '{env}',
+  name: 'Production',
+  environment_type: { name: 'Production', rank: 2 },
+  category: { name: 'prod' },
+  type: 'deployment_environment',
+} as never;
+
+const branchingModelFixture = {
+  type: 'branching_model',
+  development: { branch: { name: 'develop' }, use_mainbranch: false },
+  production: { enabled: true, branch: { name: 'main' }, use_mainbranch: true },
+  branch_types: [
+    { kind: 'feature', prefix: 'feature/' },
+    { kind: 'hotfix', prefix: 'hotfix/' },
+  ],
+} as never;
+
+const workspaceMemberFixture = {
+  type: 'workspace_membership',
+  user: { display_name: 'Ada', nickname: 'ada', account_id: 'acc-1', uuid: '{u}' },
+  workspace: { slug: 'acme', name: 'Acme Inc', uuid: '{ws}' },
+} as never;
+
 describe('presenter field sets stay in sync with presenters', () => {
   const cases: Array<{
     name: string;
@@ -426,6 +492,37 @@ describe('presenter field sets stay in sync with presenters', () => {
       present: presentPrActivity,
       fields: PR_ACTIVITY_FIELDS,
       fixture: activityUpdateFixture,
+    },
+    {
+      name: 'workspace',
+      present: presentWorkspace,
+      fields: WORKSPACE_FIELDS,
+      fixture: workspaceFixture,
+    },
+    { name: 'project', present: presentProject, fields: PROJECT_FIELDS, fixture: projectFixture },
+    {
+      name: 'deployment',
+      present: presentDeployment,
+      fields: DEPLOYMENT_FIELDS,
+      fixture: deploymentFixture,
+    },
+    {
+      name: 'environment',
+      present: presentEnvironment,
+      fields: ENVIRONMENT_FIELDS,
+      fixture: environmentFixture,
+    },
+    {
+      name: 'branching model',
+      present: presentBranchingModel,
+      fields: BRANCHING_MODEL_FIELDS,
+      fixture: branchingModelFixture,
+    },
+    {
+      name: 'workspace member',
+      present: presentWorkspaceMember,
+      fields: WORKSPACE_MEMBER_FIELDS,
+      fixture: workspaceMemberFixture,
     },
     {
       name: 'pipeline step',

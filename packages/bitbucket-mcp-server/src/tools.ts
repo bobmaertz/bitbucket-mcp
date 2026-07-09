@@ -43,6 +43,13 @@ import {
   getPullRequestActivity,
   listCommitPullRequests,
   getTestReports,
+  listWorkspaces,
+  listProjects,
+  getProject,
+  listDeployments,
+  listEnvironments,
+  getBranchingModel,
+  listWorkspaceMembers,
   type Logger,
   type TargetDefaults,
   type PipelineStatus,
@@ -520,6 +527,68 @@ export const readOnlyTools: Tool[] = [
       ['pipeline', 'step']
     ),
   },
+  {
+    name: 'bitbucket_list_workspaces',
+    description:
+      'List the workspaces the authenticated user belongs to. Useful for discovering workspace IDs to pass as "workspace".',
+    inputSchema: schema({ ...paging }),
+  },
+  {
+    name: 'bitbucket_list_projects',
+    description:
+      'List the projects in a workspace (key, name, description). Omit "workspace" for BITBUCKET_WORKSPACE.',
+    inputSchema: schema({
+      workspace: {
+        type: 'string',
+        description: 'Workspace ID to scope to (optional; defaults to BITBUCKET_WORKSPACE)',
+      },
+      query: { type: 'string', description: 'Bitbucket query expression (optional)' },
+      sort: { type: 'string', description: 'Sort field (optional)' },
+      ...paging,
+    }),
+  },
+  {
+    name: 'bitbucket_get_project',
+    description: 'Get a single workspace project by key.',
+    inputSchema: schema(
+      {
+        workspace: {
+          type: 'string',
+          description: 'Workspace ID (optional; defaults to BITBUCKET_WORKSPACE)',
+        },
+        key: { type: 'string', description: 'Project key' },
+      },
+      ['key']
+    ),
+  },
+  {
+    name: 'bitbucket_list_deployments',
+    description:
+      "List a repository's deployments (release → environment, with current state), newest first.",
+    inputSchema: schema({ ...workspaceRepo, ...paging }, ['repo']),
+  },
+  {
+    name: 'bitbucket_list_environments',
+    description: "List a repository's deployment environments.",
+    inputSchema: schema({ ...workspaceRepo, ...paging }, ['repo']),
+  },
+  {
+    name: 'bitbucket_get_branching_model',
+    description:
+      "Get a repository's effective branching model: the resolved development/production branches and the configured branch-type prefixes (feature/, hotfix/, ...).",
+    inputSchema: schema({ ...workspaceRepo }, ['repo']),
+  },
+  {
+    name: 'bitbucket_list_workspace_members',
+    description: 'List the members of a workspace (display name, nickname, account_id).',
+    inputSchema: schema({
+      workspace: {
+        type: 'string',
+        description: 'Workspace ID to scope to (optional; defaults to BITBUCKET_WORKSPACE)',
+      },
+      ...paging,
+    }),
+  },
 ];
 
 // Handlers --------------------------------------------------------------------
@@ -880,4 +949,69 @@ export const handlers: Record<string, Handler> = {
       })
     );
   },
+
+  bitbucket_list_workspaces: async (ctx, args) =>
+    json(
+      await listWorkspaces(ctx.api, {
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+      })
+    ),
+
+  bitbucket_list_projects: async (ctx, args) =>
+    json(
+      await listProjects(ctx.api, {
+        workspace: (args.workspace as string | undefined) || ctx.defaults.workspace,
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+        query: args.query as string | undefined,
+        sort: args.sort as string | undefined,
+      })
+    ),
+
+  bitbucket_get_project: async (ctx, args) =>
+    json(
+      await getProject(ctx.api, {
+        workspace: (args.workspace as string | undefined) || ctx.defaults.workspace,
+        key: str(args, 'key'),
+      })
+    ),
+
+  bitbucket_list_deployments: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await listDeployments(ctx.api, {
+        workspace,
+        repo,
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+      })
+    );
+  },
+
+  bitbucket_list_environments: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await listEnvironments(ctx.api, {
+        workspace,
+        repo,
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+      })
+    );
+  },
+
+  bitbucket_get_branching_model: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(await getBranchingModel(ctx.api, { workspace, repo }));
+  },
+
+  bitbucket_list_workspace_members: async (ctx, args) =>
+    json(
+      await listWorkspaceMembers(ctx.api, {
+        workspace: (args.workspace as string | undefined) || ctx.defaults.workspace,
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+      })
+    ),
 };

@@ -1,5 +1,6 @@
 import type { BitbucketClient } from '../client.js';
-import type { Workspace, PaginatedResponse, ListOptions } from '../types/index.js';
+import type { Workspace, WorkspaceMember, PaginatedResponse, ListOptions } from '../types/index.js';
+import { seg } from '../utils/path.js';
 import { buildListQuery } from '../utils/query.js';
 
 /**
@@ -26,5 +27,14 @@ export class WorkspacesResource {
       ...response,
       values: (response.values ?? []).map((entry) => entry.workspace),
     };
+  }
+
+  /** List the members of a workspace (`GET /workspaces/{ws}/members`). */
+  async listMembers(
+    workspace: string,
+    options?: ListOptions
+  ): Promise<PaginatedResponse<WorkspaceMember>> {
+    const path = `/workspaces/${seg(workspace)}/members${buildListQuery(options)}`;
+    return this.client.get<PaginatedResponse<WorkspaceMember>>(path);
   }
 }

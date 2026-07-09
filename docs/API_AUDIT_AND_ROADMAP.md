@@ -113,8 +113,8 @@ fit for a least-privilege read-only server.
 Four phases, each independently shippable. Tool names follow the existing `bitbucket_<verb>_<noun>`
 convention; all new tools are read-only GETs behind the existing presenter/truncation patterns.
 
-**Status:** Phase 1 ✅ delivered · Phase 2 ✅ delivered · Phase 3 ✅ delivered · Phase 4 planned. The
-surface is now **33 read-only tools**.
+**Status:** Phase 1 ✅ delivered · Phase 2 ✅ delivered · Phase 3 ✅ delivered · Phase 4 ✅ delivered.
+All four phases are complete; the surface is now **40 read-only tools**.
 
 ### Phase 1 — Efficiency & hygiene (no new API surface) — ✅ delivered
 
@@ -167,7 +167,16 @@ points at the cheaper diffstat first.
 | `bitbucket_list_commit_pull_requests` | `GET /commit/{hash}/pullrequests`                                                                                                    |
 | `bitbucket_get_test_reports`          | `GET /steps/{step}/test_reports` + `/test_cases` + `/test_case_reasons`, composed into one summarized "failing tests + reasons" tool |
 
-### Phase 4 — Workspace & governance reads (5–7 new tools)
+### Phase 4 — Workspace & governance reads (7 new tools) — ✅ delivered
+
+Delivered as `bitbucket_list_workspaces`, `bitbucket_list_projects`, `bitbucket_get_project`,
+`bitbucket_list_deployments`, `bitbucket_list_environments`, `bitbucket_get_branching_model`, and
+`bitbucket_list_workspace_members`. The optional `effective-default-reviewers` and repo-permissions
+tools were **deferred** to avoid tool-count creep (branch-restriction reads also require
+`repository:admin`, a poor fit for a least-privilege read-only server). Workspace-scoped tools
+(`list_projects`, `get_project`, `list_workspace_members`) fall back to `BITBUCKET_WORKSPACE`;
+`list_workspaces` reuses the existing `workspaces.list` client code and trims client-side because of
+its access-token envelope.
 
 | Tool                                                                                      | Endpoint                                                                                   |
 | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -184,13 +193,16 @@ into one tool with a target param) before shipping Phase 4.
 
 ## 5. Housekeeping found during the audit
 
-- **README under-documents the surface**: 13 tools listed, 18 exist (pipelines suite missing).
-- **`docs/PROJECT_SUMMARY.md` is stale**: describes write tools and app-password auth that no
-  longer match the read-only surface; `docs/GETTING_STARTED.md` body still documents both despite
-  its banner.
-- **Broken links**: README and docs reference `docs/ai/DESIGN.md` / `docs/ai/IMPLEMENTATION_PLAN.md`,
-  which don't exist.
-- **App passwords are removed by Atlassian on July 28, 2026** (brownouts already running). The
-  legacy `BITBUCKET_USERNAME`/`BITBUCKET_APP_PASSWORD` path should emit a loud runtime warning now
-  and be deleted shortly after removal day.
-- `pullRequests.getPatch` is implemented but unexposed — either surface it (cheap) or delete it.
+- ✅ **README under-documents the surface** — fixed in Phase 1; the tool table now tracks the full
+  surface (40 tools after Phase 4).
+- ✅ **Broken links** to `docs/ai/DESIGN.md` / `docs/ai/IMPLEMENTATION_PLAN.md` — repointed to this
+  document in Phase 1.
+- **`docs/PROJECT_SUMMARY.md` / `docs/GETTING_STARTED.md` are still historical**: they describe write
+  tools and app-password auth as the primary path. Their broken links are fixed and banners flag them
+  as historical, but a full rewrite (or removal) is still outstanding — the README is the accurate
+  reference.
+- **App passwords are removed by Atlassian on July 28, 2026** (brownouts already running). The legacy
+  `BITBUCKET_USERNAME`/`BITBUCKET_APP_PASSWORD` path still works as a fallback; it should be deleted
+  shortly after removal day (access-token Bearer auth added in Phase 1 is the recommended path).
+- `pullRequests.getPatch` is implemented but unexposed — the diff/diffstat tools (Phases 1–3) cover
+  the common "what changed" need, so the raw patch remains intentionally unexposed for now.

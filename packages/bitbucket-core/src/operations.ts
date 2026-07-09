@@ -27,6 +27,12 @@ import {
   presentCommitStatus,
   presentPrActivity,
   presentTestCase,
+  presentWorkspace,
+  presentProject,
+  presentDeployment,
+  presentEnvironment,
+  presentBranchingModel,
+  presentWorkspaceMember,
   objectFields,
   listFields,
   PR_SUMMARY_FIELDS,
@@ -49,6 +55,11 @@ import {
   COMMIT_STATUS_FIELDS,
   PR_ACTIVITY_FIELDS,
   TEST_CASE_FIELDS,
+  PROJECT_FIELDS,
+  DEPLOYMENT_FIELDS,
+  ENVIRONMENT_FIELDS,
+  BRANCHING_MODEL_FIELDS,
+  WORKSPACE_MEMBER_FIELDS,
 } from './presenters.js';
 
 /**
@@ -1139,4 +1150,106 @@ export async function getTestReports(
     failing,
     reasons_truncated: failingCases.length > MAX_REASON_LOOKUPS || undefined,
   };
+}
+
+// Workspace & governance ------------------------------------------------------
+
+/**
+ * List the workspaces the authenticated user belongs to (`GET /user/workspaces`,
+ * the replacement for the retired `GET /workspaces`). The response wraps each
+ * workspace in an access envelope that the client unwraps, so field trimming is
+ * done client-side by the presenter rather than via a `fields` selector.
+ */
+export async function listWorkspaces(
+  api: BitbucketAPI,
+  params: { page?: number; pagelen?: number } = {}
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.workspaces.list({ page, pagelen: clampPagelen(params.pagelen) });
+  return toPage(response, presentWorkspace, page);
+}
+
+/** List the projects in a workspace. */
+export async function listProjects(
+  api: BitbucketAPI,
+  params: { workspace: string; page?: number; pagelen?: number; query?: string; sort?: string }
+): Promise<Page<Record<string, unknown>>> {
+  if (!params.workspace) {
+    throw new Error('workspace is required');
+  }
+  const page = params.page ?? 1;
+  const response = await api.projects.list(params.workspace, {
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    q: params.query,
+    sort: params.sort,
+    fields: listFields(PROJECT_FIELDS),
+  });
+  return toPage(response, presentProject, page);
+}
+
+export async function getProject(
+  api: BitbucketAPI,
+  params: { workspace: string; key: string }
+): Promise<Record<string, unknown>> {
+  const project = await api.projects.get(params.workspace, params.key, {
+    fields: objectFields(PROJECT_FIELDS),
+  });
+  return presentProject(project);
+}
+
+/** List a repository's deployments (release → environment, with state). */
+export async function listDeployments(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; page?: number; pagelen?: number }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.deployments.listDeployments(params.workspace, params.repo, {
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    fields: listFields(DEPLOYMENT_FIELDS),
+  });
+  return toPage(response, presentDeployment, page);
+}
+
+/** List a repository's deployment environments. */
+export async function listEnvironments(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; page?: number; pagelen?: number }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.deployments.listEnvironments(params.workspace, params.repo, {
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    fields: listFields(ENVIRONMENT_FIELDS),
+  });
+  return toPage(response, presentEnvironment, page);
+}
+
+/** Get a repository's effective branching model (dev/prod branches + prefixes). */
+export async function getBranchingModel(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string }
+): Promise<Record<string, unknown>> {
+  const model = await api.branches.getBranchingModel(params.workspace, params.repo, {
+    fields: objectFields(BRANCHING_MODEL_FIELDS),
+  });
+  return presentBranchingModel(model);
+}
+
+/** List the members of a workspace. */
+export async function listWorkspaceMembers(
+  api: BitbucketAPI,
+  params: { workspace: string; page?: number; pagelen?: number }
+): Promise<Page<Record<string, unknown>>> {
+  if (!params.workspace) {
+    throw new Error('workspace is required');
+  }
+  const page = params.page ?? 1;
+  const response = await api.workspaces.listMembers(params.workspace, {
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    fields: listFields(WORKSPACE_MEMBER_FIELDS),
+  });
+  return toPage(response, presentWorkspaceMember, page);
 }

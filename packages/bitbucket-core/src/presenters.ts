@@ -19,6 +19,12 @@ import type {
   CommitStatus,
   PullRequestActivity,
   TestCase,
+  Workspace,
+  Project,
+  Deployment,
+  Environment,
+  BranchingModel,
+  WorkspaceMember,
 } from '@bobmaertz/bitbucket-api';
 
 /**
@@ -323,6 +329,76 @@ export function presentTestCase(testCase: TestCase): Record<string, unknown> {
   });
 }
 
+// Workspace & governance ------------------------------------------------------
+
+export function presentWorkspace(workspace: Workspace): Record<string, unknown> {
+  return compact({
+    slug: workspace.slug,
+    name: workspace.name,
+    uuid: workspace.uuid,
+    is_private: workspace.is_private,
+    url: htmlUrl(workspace.links),
+  });
+}
+
+export function presentProject(project: Project): Record<string, unknown> {
+  return compact({
+    key: project.key,
+    name: project.name,
+    description: project.description?.trim(),
+    is_private: project.is_private,
+    updated_on: project.updated_on,
+    url: htmlUrl(project.links),
+  });
+}
+
+export function presentDeployment(deployment: Deployment): Record<string, unknown> {
+  return compact({
+    uuid: deployment.uuid,
+    state: deployment.state?.status?.name ?? deployment.state?.name,
+    environment: deployment.environment?.name,
+    release: deployment.release?.name,
+    commit: shortHash(deployment.release?.commit?.hash),
+    updated_on: deployment.last_update_time,
+  });
+}
+
+export function presentEnvironment(environment: Environment): Record<string, unknown> {
+  return compact({
+    uuid: environment.uuid,
+    name: environment.name,
+    type: environment.environment_type?.name,
+    category: environment.category?.name,
+  });
+}
+
+/**
+ * A repository's effective branching model. `development`/`production` are
+ * resolved branch names; `production_enabled` is meaningful (production can be
+ * turned off); `branch_types` are the configured kind→prefix mappings.
+ */
+export function presentBranchingModel(model: BranchingModel): Record<string, unknown> {
+  const dev = model.development;
+  const prod = model.production;
+  return compact({
+    development: dev?.branch?.name ?? dev?.name,
+    production: prod?.branch?.name ?? prod?.name,
+    production_enabled: prod?.enabled,
+    branch_types: (model.branch_types ?? []).map((bt) =>
+      compact({ kind: bt.kind, prefix: bt.prefix })
+    ),
+  });
+}
+
+export function presentWorkspaceMember(member: WorkspaceMember): Record<string, unknown> {
+  return compact({
+    name: member.user?.display_name,
+    nickname: member.user?.nickname,
+    account_id: member.user?.account_id,
+    uuid: member.user?.uuid,
+  });
+}
+
 // Pipelines -------------------------------------------------------------------
 
 /** Map a `pipeline_trigger_*` discriminator to push|manual|schedule. */
@@ -591,6 +667,57 @@ export const TEST_CASE_FIELDS = [
   'fully_qualified_name',
   'status',
   'duration_in_ms',
+] as const;
+
+/** Fields read by {@link presentWorkspace}. */
+export const WORKSPACE_FIELDS = ['slug', 'name', 'uuid', 'is_private', 'links.html.href'] as const;
+
+/** Fields read by {@link presentProject}. */
+export const PROJECT_FIELDS = [
+  'key',
+  'name',
+  'description',
+  'is_private',
+  'updated_on',
+  'links.html.href',
+] as const;
+
+/** Fields read by {@link presentDeployment}. */
+export const DEPLOYMENT_FIELDS = [
+  'uuid',
+  'state.name',
+  'state.status.name',
+  'environment.name',
+  'release.name',
+  'release.commit.hash',
+  'last_update_time',
+] as const;
+
+/** Fields read by {@link presentEnvironment}. */
+export const ENVIRONMENT_FIELDS = [
+  'uuid',
+  'name',
+  'environment_type.name',
+  'category.name',
+] as const;
+
+/** Fields read by {@link presentBranchingModel}. */
+export const BRANCHING_MODEL_FIELDS = [
+  'development.branch.name',
+  'development.name',
+  'production.branch.name',
+  'production.name',
+  'production.enabled',
+  'branch_types.kind',
+  'branch_types.prefix',
+] as const;
+
+/** Fields read by {@link presentWorkspaceMember}. */
+export const WORKSPACE_MEMBER_FIELDS = [
+  'user.display_name',
+  'user.nickname',
+  'user.account_id',
+  'user.uuid',
 ] as const;
 
 /** Fields read by {@link presentPipelineSummary} (and {@link presentTarget}). */
