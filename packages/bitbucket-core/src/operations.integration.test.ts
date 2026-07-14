@@ -9,6 +9,7 @@ import {
   getStepLog,
   listBranches,
   listRepositories,
+  whois,
 } from './operations.js';
 
 /**
@@ -124,6 +125,54 @@ describe('operations (HTTP integration)', () => {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(
           JSON.stringify({ account_id: 'acc-1', uuid: '{me}', display_name: 'Jo', type: 'user' })
+        );
+        return;
+      }
+
+      // Single workspace member lookup (whois): decode the id segment and map
+      // known ids to a user; anything else 404s so per-id error handling shows.
+      const memberMatch = url.match(/^\/workspaces\/acme\/members\/([^?]+)$/);
+      if (memberMatch) {
+        const id = decodeURIComponent(memberMatch[1]);
+        const byId: Record<string, { display_name: string; account_id: string; uuid: string }> = {
+          'acc-bob': { display_name: 'Bob Maertz', account_id: 'acc-bob', uuid: '{bob}' },
+          '{bob}': { display_name: 'Bob Maertz', account_id: 'acc-bob', uuid: '{bob}' },
+        };
+        const user = byId[id];
+        if (!user) {
+          res.writeHead(404, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: { message: 'not found' } }));
+          return;
+        }
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            type: 'workspace_membership',
+            user: { type: 'user', nickname: 'bob', links: {}, ...user },
+            workspace: { type: 'workspace', slug: 'acme', uuid: '{w}', links: {} },
+          })
+        );
+        return;
+      }
+
+      // Workspace member listing, used to resolve a natural name to an id.
+      if (url.startsWith('/workspaces/acme/members')) {
+        const member = (display_name: string, account_id: string, uuid: string) => ({
+          type: 'workspace_membership',
+          user: { type: 'user', display_name, account_id, uuid, links: {} },
+          workspace: { type: 'workspace', slug: 'acme', uuid: '{w}', links: {} },
+        });
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            size: 4,
+            values: [
+              member('Bob Maertz', 'acc-bob', '{bob}'),
+              member('Jo', 'acc-1', '{me}'),
+              member('Dup', 'acc-d1', '{d1}'),
+              member('Dup', 'acc-d2', '{d2}'),
+            ],
+          })
         );
         return;
       }
@@ -277,6 +326,56 @@ describe('operations (HTTP integration)', () => {
     expect(result.truncated).toBe(true);
     expect(result.has_more).toBe(true);
     expect(result.items).toHaveLength(1);
+  });
+
+  it('whois resolves one id to a natural name', async () => {
+    const result = await whois(api(), { workspace: 'acme', users: ['acc-bob'] });
+    expect(result.users).toEqual([
+      {
+        query: 'acc-bob',
+        display_name: 'Bob Maertz',
+        nickname: 'bob',
+        account_id: 'acc-bob',
+        uuid: '{bob}',
+      },
+    ]);
+  });
+
+  it('whois resolves many ids and reports an unknown id without failing the batch', async () => {
+    const result = await whois(api(), { workspace: 'acme', users: ['acc-bob', '{nope}'] });
+    expect(result.users).toEqual([
+      expect.objectContaining({ query: 'acc-bob', display_name: 'Bob Maertz' }),
+      { query: '{nope}', error: 'not found' },
+    ]);
+  });
+
+  it('lists a user’s PRs by natural display name, resolving it via members', async () => {
+    const result = await listUserPullRequests(api(), { workspace: 'acme', user: 'Bob Maertz' });
+    // Resolved the name to an id and returned that author's PRs.
+    expect(result.items.length).toBeGreaterThan(0);
+    expect(result.items[0]).toMatchObject({ id: 42 });
+  });
+
+  it('errors clearly when a natural name matches no member', async () => {
+    await expect(
+      listUserPullRequests(api(), { workspace: 'acme', user: 'Nobody Here' })
+    ).rejects.toThrow(/No workspace member/);
+  });
+
+  it('errors clearly when a natural name is ambiguous', async () => {
+    await expect(listUserPullRequests(api(), { workspace: 'acme', user: 'Dup' })).rejects.toThrow(
+      /ambiguous/
+    );
+  });
+
+  it('uses an id-shaped user verbatim, without a members lookup', async () => {
+    requestedPaths.length = 0;
+    await listUserPullRequests(api(), { workspace: 'acme', user: '{bob}' });
+    // Fast path: no /members listing, straight to the PR endpoint with the id.
+    expect(requestedPaths.some((p) => p.startsWith('/workspaces/acme/members'))).toBe(false);
+    expect(
+      requestedPaths.some((p) => p.startsWith('/workspaces/acme/pullrequests/%7Bbob%7D'))
+    ).toBe(true);
   });
 
   it('shortens branch hashes', async () => {

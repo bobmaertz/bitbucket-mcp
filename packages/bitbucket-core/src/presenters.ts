@@ -6,6 +6,7 @@ import type {
   Commit,
   Links,
   Repository,
+  User,
   Pipeline,
   PipelineStep,
   PipelineSchedule,
@@ -70,6 +71,21 @@ function isEmpty(value: unknown): boolean {
   if (Array.isArray(value)) return value.length === 0;
   if (typeof value === 'object') return Object.keys(value).length === 0;
   return false;
+}
+
+/**
+ * Lean account shape: the natural name(s) plus the ids other tools consume.
+ * Keeps both `account_id` and `uuid` so a caller can feed either back into a
+ * user-taking tool. `compact()` drops an absent `nickname`.
+ */
+export function presentUser(user: User): Record<string, unknown> {
+  return compact({
+    display_name: user.display_name,
+    nickname: user.nickname,
+    account_id: user.account_id,
+    uuid: user.uuid,
+    url: htmlUrl(user.links),
+  });
 }
 
 /** Lean PR shape for list views. */
