@@ -1,6 +1,6 @@
 {
   "name": "@bobmaertz/bitbucket-api",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "TypeScript client for Bitbucket Cloud REST API 2.0",
   "type": "module",
   "main": "./dist/index.js",
