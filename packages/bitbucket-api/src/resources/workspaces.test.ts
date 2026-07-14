@@ -69,4 +69,38 @@ describe('WorkspacesResource', () => {
 
     expect(mockClient.get).toHaveBeenCalledWith('/workspaces/acme/members');
   });
+
+  it('resolves a single member and URL-encodes a brace-wrapped UUID', async () => {
+    const membership = {
+      type: 'workspace_membership',
+      user: { type: 'user', display_name: 'Jo', account_id: 'acc-1', uuid: '{u}', links: {} },
+      workspace: { type: 'workspace', slug: 'acme', uuid: '{w}', links: {} },
+    };
+    (mockClient.get as any).mockResolvedValue(membership);
+
+    const result = await resource.getMember('acme', '{1234-5678}');
+
+    expect(result).toBe(membership);
+    // seg() encodes braces so the id can't alter the request path.
+    expect(mockClient.get).toHaveBeenCalledWith('/workspaces/acme/members/%7B1234-5678%7D');
+  });
+
+  it('lists members via /workspaces/{workspace}/members', async () => {
+    (mockClient.get as any).mockResolvedValue({ values: [], size: 0 });
+
+    await resource.listMembers('acme', { pagelen: 100 });
+
+    const path = (mockClient.get as any).mock.calls[0][0] as string;
+    expect(path.startsWith('/workspaces/acme/members')).toBe(true);
+    expect(path).toContain('pagelen=100');
+  });
+
+  it('follows an opaque next cursor verbatim when listing members', async () => {
+    (mockClient.get as any).mockResolvedValue({ values: [], size: 0 });
+
+    const next = 'https://api.bitbucket.org/2.0/workspaces/acme/members?page=2';
+    await resource.listMembers('acme', { nextUrl: next });
+
+    expect(mockClient.get).toHaveBeenCalledWith(next);
+  });
 });

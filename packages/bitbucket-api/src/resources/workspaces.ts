@@ -1,7 +1,12 @@
 import type { BitbucketClient } from '../client.js';
-import type { Workspace, WorkspaceMember, PaginatedResponse, ListOptions } from '../types/index.js';
-import { seg } from '../utils/path.js';
+import type {
+  Workspace,
+  WorkspaceMembership,
+  PaginatedResponse,
+  ListOptions,
+} from '../types/index.js';
 import { buildListQuery } from '../utils/query.js';
+import { seg } from '../utils/path.js';
 
 /**
  * Workspaces resource API (read-only).
@@ -29,12 +34,34 @@ export class WorkspacesResource {
     };
   }
 
-  /** List the members of a workspace (`GET /workspaces/{ws}/members`). */
+  /**
+   * Resolve a single workspace member by UUID or Atlassian `account_id`
+   * (`GET /workspaces/{workspace}/members/{member}`). Returns the membership,
+   * whose nested `user` carries the natural `display_name`/`nickname` — the
+   * supported way to turn an opaque id back into a human name after Bitbucket
+   * removed username lookups. A 404 surfaces as the client's NotFoundError.
+   */
+  async getMember(workspace: string, member: string): Promise<WorkspaceMembership> {
+    const path = `/workspaces/${seg(workspace)}/members/${seg(member)}`;
+    return this.client.get<WorkspaceMembership>(path);
+  }
+
+  /**
+   * List a workspace's members (`GET /workspaces/{workspace}/members`). Each
+   * value is a membership with a nested `user`, so callers can match a natural
+   * `display_name`/`nickname` back to an `account_id`/`uuid`. When `nextUrl` is
+   * supplied we follow Bitbucket's opaque cursor verbatim (the query params only
+   * build the first page, since the cursor already carries them).
+   */
   async listMembers(
     workspace: string,
-    options?: ListOptions
-  ): Promise<PaginatedResponse<WorkspaceMember>> {
+    options?: ListOptions & { nextUrl?: string }
+  ): Promise<PaginatedResponse<WorkspaceMembership>> {
+    if (options?.nextUrl) {
+      return this.client.get<PaginatedResponse<WorkspaceMembership>>(options.nextUrl);
+    }
+
     const path = `/workspaces/${seg(workspace)}/members${buildListQuery(options)}`;
-    return this.client.get<PaginatedResponse<WorkspaceMember>>(path);
+    return this.client.get<PaginatedResponse<WorkspaceMembership>>(path);
   }
 }

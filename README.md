@@ -47,6 +47,7 @@ Read-only. `workspace` defaults to `BITBUCKET_WORKSPACE`; repo-scoped tools requ
 | `bitbucket_get_repository`            | `workspace?`, `repo`                                                                |
 | `bitbucket_list_pull_requests`        | `repo`, `state?` (default `OPEN`), `query?`, `page?`                                |
 | `bitbucket_list_user_pull_requests`   | `workspace?`, `user?` (default: me), `state?`, `sort?`, `pagelen?`, `max_pages?`    |
+| `bitbucket_whois`                     | `workspace?`, `users` (one id or an array of ids)                                   |
 | `bitbucket_get_pull_request`          | `repo`, `id`                                                                        |
 | `bitbucket_get_pr_commits`            | `repo`, `id`, `page?`                                                               |
 | `bitbucket_get_pr_diff`               | `repo`, `id`, `max_lines?` (default 200), `path?`, `context?`                       |
@@ -86,7 +87,9 @@ Read-only. `workspace` defaults to `BITBUCKET_WORKSPACE`; repo-scoped tools requ
 
 `bitbucket_list_repositories` needs no args: omit `workspace` to list the configured `BITBUCKET_WORKSPACE`, or pass `workspace` to scope to another. There is no cross-workspace listing — Atlassian retired both `GET /repositories` and `GET /workspaces` under CHANGE-2770.
 
-`bitbucket_list_user_pull_requests` lists **all pull requests authored by a user across a whole workspace in one aggregated call** — no more listing every repo and querying each. It auto-follows pagination (up to `max_pages`, default 10) and sorts newest-updated first (`-updated_on`). Omit `user` for the authenticated account ("my" PRs); otherwise `user` must be an account UUID (`{…}`) or Atlassian `account_id` — bare usernames were removed by Bitbucket. It covers **authored** PRs only; reviewer-only involvement isn't included. Backed by `GET /workspaces/{workspace}/pullrequests/{selected_user}`.
+`bitbucket_list_user_pull_requests` lists **all pull requests authored by a user across a whole workspace in one aggregated call** — no more listing every repo and querying each. It auto-follows pagination (up to `max_pages`, default 10) and sorts newest-updated first (`-updated_on`). Omit `user` for the authenticated account ("my" PRs); otherwise `user` may be an account UUID (`{…}`), an Atlassian `account_id`, **or a natural display name / nickname** — the latter is resolved against the workspace's members and must match exactly one of them. It covers **authored** PRs only; reviewer-only involvement isn't included. Backed by `GET /workspaces/{workspace}/pullrequests/{selected_user}`.
+
+`bitbucket_whois` goes the other way — hand it **one or many** account UUIDs / `account_id`s (as `users`, a single string or an array) and it returns each one's natural name (`display_name`, `nickname`) plus both ids, resolved via the workspace's members. Unknown ids come back as `{ query, error }` rather than failing the batch, so an author UUID seen in a PR listing can always be turned back into a human name. IDs only here; to look someone up _by_ name, pass the name straight to `bitbucket_list_user_pull_requests`. Backed by `GET /workspaces/{workspace}/members/{member}`.
 
 `bitbucket_get_pr_diff` scopes the diff server-side: pass `path` (one or more files) and/or `context` (lines around each hunk) to fetch just what you need instead of downloading the whole diff and trimming it.
 

@@ -74,6 +74,8 @@ const REPO = '/repositories/{workspace}/{repo_slug}';
 const READ_ENDPOINTS: Array<[string, string]> = [
   ['/user', 'get'],
   ['/user/workspaces', 'get'],
+  ['/workspaces/{workspace}/members', 'get'],
+  ['/workspaces/{workspace}/members/{member}', 'get'],
   ['/workspaces/{workspace}/pullrequests/{selected_user}', 'get'],
   ['/repositories/{workspace}', 'get'],
   [REPO, 'get'],
@@ -199,6 +201,9 @@ describe('field-dependency contract', () => {
     ],
     // We only read `slug` off each workspace to enumerate per-workspace repos.
     ['workspace', ['slug', 'name', 'uuid', 'links']],
+    // whois + name resolution read the natural name and both ids off the user.
+    ['user', ['display_name', 'nickname', 'account_id', 'uuid', 'links']],
+    ['workspace_membership', ['user', 'workspace']],
   ];
 
   it.each(expectations)('%s defines the fields we depend on', (definition, fields) => {
