@@ -78,7 +78,6 @@ Read-only. `workspace` defaults to `BITBUCKET_WORKSPACE`; repo-scoped tools requ
 | `bitbucket_list_commit_pull_requests` | `repo`, `commit`, `page?`                                                           |
 | `bitbucket_get_test_reports`          | `repo`, `pipeline` (build number or UUID), `step`                                   |
 
-
 `bitbucket_list_repositories` needs no args: omit `workspace` to list the configured `BITBUCKET_WORKSPACE`, or pass `workspace` to scope to another. There is no cross-workspace listing — Atlassian retired both `GET /repositories` and `GET /workspaces` under CHANGE-2770.
 
 `bitbucket_list_user_pull_requests` lists **all pull requests authored by a user across a whole workspace in one aggregated call** — no more listing every repo and querying each. It auto-follows pagination (up to `max_pages`, default 10) and sorts newest-updated first (`-updated_on`). Omit `user` for the authenticated account ("my" PRs); otherwise `user` may be an account UUID (`{…}`), an Atlassian `account_id`, **or a natural display name / nickname** — the latter is resolved against the workspace's members and must match exactly one of them. It covers **authored** PRs only; reviewer-only involvement isn't included. Backed by `GET /workspaces/{workspace}/pullrequests/{selected_user}`.
