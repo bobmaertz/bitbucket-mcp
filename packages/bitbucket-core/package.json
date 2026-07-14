@@ -1,6 +1,6 @@
 {
   "name": "@bobmaertz/bitbucket-core",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Shared core (config, logging, presenters, operations) for the Bitbucket MCP server and CLI",
   "type": "module",
   "main": "./dist/index.js",

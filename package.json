@@ -1,6 +1,6 @@
 {
   "name": "@bobmaertz/bitbucket-mcp-monorepo",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Model Context Protocol server for Bitbucket Cloud REST API",
   "private": true,
   "type": "module",
