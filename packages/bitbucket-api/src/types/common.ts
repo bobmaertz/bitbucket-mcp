@@ -77,6 +77,17 @@ export interface Workspace {
 }
 
 /**
+ * Workspace membership (`GET /workspaces/{workspace}/members[/{member}]`).
+ * Pairs a workspace with one of its member users; we read the nested `user` to
+ * map an account UUID/`account_id` back to a natural `display_name`/`nickname`.
+ */
+export interface WorkspaceMembership {
+  type: 'workspace_membership';
+  user: User;
+  workspace: Workspace;
+}
+
+/**
  * Project information
  */
 export interface Project {

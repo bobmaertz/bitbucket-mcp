@@ -28,6 +28,7 @@ import {
   listSchedules,
   listRepositories,
   getRepository,
+  whois,
   listDirectory,
   getFile,
   getFileHistory,
@@ -122,7 +123,7 @@ export const readOnlyTools: Tool[] = [
       user: {
         type: 'string',
         description:
-          'Account UUID in braces (e.g. {1234-...}) or Atlassian account_id. Omit for the authenticated user. Bare usernames are NOT supported.',
+          'Account UUID in braces (e.g. {1234-...}), Atlassian account_id, or a natural display name/nickname (resolved against workspace members; must be unambiguous). Omit for the authenticated user ("my" PRs).',
       },
       state: {
         type: 'string',
@@ -137,6 +138,25 @@ export const readOnlyTools: Tool[] = [
       },
       max_pages: { type: 'number', description: 'Safety cap on pages fetched (default 10)' },
     }),
+  },
+  {
+    name: 'bitbucket_whois',
+    description:
+      'Resolve one or many Bitbucket account IDs to their natural names. Pass "users" as a single UUID/account_id or an array of them; each is looked up among the workspace members and returned with its display_name, nickname, and ids. Unknown ids come back as { query, error } instead of failing the batch. IDs only — for a human name, use it directly on bitbucket_list_user_pull_requests.',
+    inputSchema: schema(
+      {
+        workspace: {
+          type: 'string',
+          description: 'Workspace ID to scope to (optional; defaults to BITBUCKET_WORKSPACE)',
+        },
+        users: {
+          oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' }, minItems: 1 }],
+          description:
+            'One account UUID/account_id, or an array of them. Natural names are NOT accepted here.',
+        },
+      },
+      ['users']
+    ),
   },
   {
     name: 'bitbucket_get_pull_request',
@@ -520,6 +540,22 @@ export const handlers: Record<string, Handler> = {
         maxPages: args.max_pages as number | undefined,
       })
     ),
+
+  bitbucket_whois: async (ctx, args) => {
+    const raw = args.users;
+    const users = (Array.isArray(raw) ? raw : [raw]).filter(
+      (u): u is string => typeof u === 'string'
+    );
+    if (users.length === 0) {
+      throw new Error('users is required (a UUID/account_id or an array of them)');
+    }
+    return json(
+      await whois(ctx.api, {
+        workspace: (args.workspace as string | undefined) || ctx.defaults.workspace,
+        users,
+      })
+    );
+  },
 
   bitbucket_get_pull_request: async (ctx, args) => {
     const { workspace, repo } = resolveTarget(ctx.defaults, args);

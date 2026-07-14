@@ -8,6 +8,7 @@ import {
   presentPipeline,
   presentPipelineStep,
   presentSchedule,
+  presentUser,
 } from './presenters.js';
 import type {
   PullRequest,
@@ -16,6 +17,7 @@ import type {
   Pipeline,
   PipelineStep,
   PipelineSchedule,
+  User,
 } from '@bobmaertz/bitbucket-api';
 
 describe('compact', () => {
@@ -33,6 +35,41 @@ describe('compact', () => {
     expect(compact({ a: { b: null, c: 1 }, d: [{ e: '' }, { f: 2 }] })).toEqual({
       a: { c: 1 },
       d: [{ f: 2 }],
+    });
+  });
+});
+
+describe('presentUser', () => {
+  it('surfaces the natural name plus both ids and a browser url', () => {
+    const user: User = {
+      type: 'user',
+      display_name: 'Bob Maertz',
+      nickname: 'bob',
+      account_id: 'acc-1',
+      uuid: '{u}',
+      links: { self: { href: 'x' }, html: { href: 'https://bitbucket.org/bob/' } },
+    };
+    expect(presentUser(user)).toEqual({
+      display_name: 'Bob Maertz',
+      nickname: 'bob',
+      account_id: 'acc-1',
+      uuid: '{u}',
+      url: 'https://bitbucket.org/bob/',
+    });
+  });
+
+  it('drops an absent nickname via compact()', () => {
+    const user: User = {
+      type: 'user',
+      display_name: 'Jo',
+      account_id: 'acc-2',
+      uuid: '{u2}',
+      links: { self: { href: 'x' } },
+    };
+    expect(presentUser(user)).toEqual({
+      display_name: 'Jo',
+      account_id: 'acc-2',
+      uuid: '{u2}',
     });
   });
 });

@@ -19,6 +19,7 @@ import {
   presentPipelineStep,
   presentSchedule,
   presentRepository,
+  presentUser,
   presentTreeEntry,
   presentFileMeta,
   presentDiffstat,
@@ -165,15 +166,79 @@ export async function listPullRequests(
 }
 
 /**
+ * True when `value` already looks like an account identifier Bitbucket accepts
+ * verbatim — a brace-wrapped UUID (`{...}`) or an Atlassian `account_id`
+ * (contains a `:` prefix, or is a long hex/opaque token). Natural names never
+ * match, so they fall through to a members-list lookup.
+ */
+function looksLikeAccountId(value: string): boolean {
+  if (/^\{.*\}$/.test(value)) return true; // UUID in braces
+  if (value.includes(':')) return true; // account_id, e.g. 557058:...
+  if (/^[0-9a-f]{24,}$/i.test(value)) return true; // legacy hex account_id
+  return false;
+}
+
+/**
+ * Resolve a caller-supplied user reference to an id Bitbucket's workspace-user
+ * endpoints accept. An id-shaped value (UUID or `account_id`) is used verbatim
+ * — the fast path, no extra call. Otherwise the value is treated as a natural
+ * display name / nickname and matched (case-insensitively) against the
+ * workspace's members, throwing a clear error when the name matches zero or
+ * more than one member so the caller learns why.
+ */
+async function resolveMemberId(
+  api: BitbucketAPI,
+  workspace: string,
+  query: string
+): Promise<string> {
+  const trimmed = query.trim();
+  if (looksLikeAccountId(trimmed)) return trimmed;
+
+  const needle = trimmed.toLowerCase();
+  const members = await PaginationHelper.getAllPages(
+    (nextUrl) => api.workspaces.listMembers(workspace, { pagelen: MAX_PAGELEN, nextUrl }),
+    { maxPages: DEFAULT_MAX_PAGES }
+  );
+
+  const matches = members.filter((m) => {
+    const u = m.user;
+    return (
+      u?.display_name?.trim().toLowerCase() === needle ||
+      u?.nickname?.trim().toLowerCase() === needle
+    );
+  });
+
+  if (matches.length === 0) {
+    throw new Error(
+      `No workspace member in "${workspace}" matches the name "${trimmed}". Pass an account UUID or account_id instead.`
+    );
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `The name "${trimmed}" is ambiguous — ${matches.length} members in "${workspace}" match it. Pass an account UUID or account_id to disambiguate.`
+    );
+  }
+  const id = matches[0].user.account_id || matches[0].user.uuid;
+  if (!id) {
+    throw new Error(`Matched member for "${trimmed}" has no account_id or uuid`);
+  }
+  return id;
+}
+
+/**
  * Resolve the `selected_user` path segment for the workspace-user PR listing.
  * When `user` is omitted we resolve the authenticated account via `GET /user`
- * (preferring `account_id`, falling back to `uuid`). A bare username is
- * unsupported by Bitbucket (removed) and will surface as the endpoint's own
- * NotFound error rather than being guessed at here.
+ * (preferring `account_id`, falling back to `uuid`). A supplied `user` may be an
+ * account UUID/`account_id` (used verbatim) or a natural display name/nickname,
+ * which is resolved against the workspace members via {@link resolveMemberId}.
  */
-async function resolveSelectedUser(api: BitbucketAPI, user?: string): Promise<string> {
+async function resolveSelectedUser(
+  api: BitbucketAPI,
+  workspace: string,
+  user?: string
+): Promise<string> {
   const trimmed = user?.trim();
-  if (trimmed) return trimmed;
+  if (trimmed) return resolveMemberId(api, workspace, trimmed);
 
   const me = await api.users.getCurrent();
   const id = me.account_id || me.uuid;
@@ -181,6 +246,42 @@ async function resolveSelectedUser(api: BitbucketAPI, user?: string): Promise<st
     throw new Error('Could not resolve the authenticated user from GET /user');
   }
   return id;
+}
+
+/**
+ * Resolve one or many account UUIDs / `account_id`s to their natural names — a
+ * "whois" over the workspace's members. Each id is looked up exactly via
+ * `GET /workspaces/{workspace}/members/{member}`; a not-found id yields a
+ * `{ query, error }` entry rather than failing the whole batch. IDs only:
+ * natural names are not accepted here (use them directly on the PR-listing tool).
+ */
+export async function whois(
+  api: BitbucketAPI,
+  params: { workspace: string; users: string[] }
+): Promise<{ users: Array<Record<string, unknown>> }> {
+  if (!params.workspace) {
+    throw new Error('workspace is required');
+  }
+  const queries = params.users.map((u) => u?.trim()).filter((u): u is string => Boolean(u));
+  if (queries.length === 0) {
+    throw new Error('at least one user id is required');
+  }
+
+  const users = await Promise.all(
+    queries.map(async (query) => {
+      try {
+        const membership = await api.workspaces.getMember(params.workspace, query);
+        return { query, ...presentUser(membership.user) };
+      } catch (err) {
+        if (err instanceof NotFoundError) {
+          return { query, error: 'not found' };
+        }
+        throw err;
+      }
+    })
+  );
+
+  return { users };
 }
 
 /**
@@ -206,7 +307,7 @@ export async function listUserPullRequests(
     throw new Error('workspace is required');
   }
 
-  const selectedUser = await resolveSelectedUser(api, params.user);
+  const selectedUser = await resolveSelectedUser(api, params.workspace, params.user);
   const pagelen = clampPagelen(params.pagelen ?? PR_MAX_PAGELEN, PR_MAX_PAGELEN);
   const sort = params.sort ?? '-updated_on';
   const state = params.state ?? 'OPEN';

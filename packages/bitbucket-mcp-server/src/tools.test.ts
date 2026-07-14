@@ -44,6 +44,7 @@ describe('read-only tool surface', () => {
         'bitbucket_list_schedules',
         'bitbucket_list_tags',
         'bitbucket_list_user_pull_requests',
+        'bitbucket_whois',
       ].sort()
     );
   });
@@ -137,6 +138,42 @@ describe('handlers', () => {
     const parsed = JSON.parse(text);
     expect(parsed).toMatchObject({ truncated: false, has_more: false, pages_fetched: 1 });
     expect(parsed.items[0]).toMatchObject({ id: 7, repo: 'acme/widgets' });
+  });
+
+  it('whois normalizes a single id to an array and returns compact names', async () => {
+    const getMember = vi.fn().mockResolvedValue({
+      type: 'workspace_membership',
+      user: { display_name: 'Bob Maertz', account_id: 'acc-bob', uuid: '{bob}', links: {} },
+    });
+    const ctx = {
+      api: { workspaces: { getMember } } as unknown as BitbucketAPI,
+      defaults: { workspace: 'acme' },
+      logger: createLogger('error'),
+    };
+
+    const result = await handlers.bitbucket_whois(ctx, { users: 'acc-bob' });
+
+    expect(getMember).toHaveBeenCalledWith('acme', 'acc-bob');
+    const text = textOf(result);
+    expect(text).not.toContain('\n'); // compact
+    const parsed = JSON.parse(text);
+    expect(parsed.users[0]).toMatchObject({ query: 'acc-bob', display_name: 'Bob Maertz' });
+  });
+
+  it('whois accepts an array of ids', async () => {
+    const getMember = vi
+      .fn()
+      .mockResolvedValue({ type: 'workspace_membership', user: { display_name: 'X', links: {} } });
+    const ctx = {
+      api: { workspaces: { getMember } } as unknown as BitbucketAPI,
+      defaults: { workspace: 'acme' },
+      logger: createLogger('error'),
+    };
+
+    await handlers.bitbucket_whois(ctx, { users: ['acc-1', 'acc-2'] });
+    expect(getMember).toHaveBeenCalledTimes(2);
+    expect(getMember).toHaveBeenCalledWith('acme', 'acc-1');
+    expect(getMember).toHaveBeenCalledWith('acme', 'acc-2');
   });
 
   it('uses an explicit user without calling GET /user', async () => {
