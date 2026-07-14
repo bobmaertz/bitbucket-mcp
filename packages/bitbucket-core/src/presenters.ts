@@ -17,6 +17,9 @@ import type {
   DiffStat,
   Tag,
   FileHistoryEntry,
+  CommitStatus,
+  PullRequestActivity,
+  TestCase,
 } from '@bobmaertz/bitbucket-api';
 
 /**
@@ -269,6 +272,73 @@ export function presentFileHistoryEntry(entry: FileHistoryEntry): Record<string,
   });
 }
 
+// PR & CI depth ---------------------------------------------------------------
+
+/** A CI/build status (used for both PR and commit statuses). */
+export function presentCommitStatus(status: CommitStatus): Record<string, unknown> {
+  return compact({
+    key: status.key,
+    name: status.name,
+    state: status.state,
+    description: status.description,
+    url: status.url,
+    commit: shortHash(status.commit?.hash),
+    updated_on: status.updated_on,
+  });
+}
+
+/**
+ * Normalize a PR activity entry to a single `{ kind, ... }` shape. Each entry
+ * carries exactly one of approval / changes_requested / comment / update; the
+ * checks are ordered so the present sub-object wins.
+ */
+export function presentPrActivity(entry: PullRequestActivity): Record<string, unknown> {
+  if (entry.approval) {
+    return compact({
+      kind: 'approval',
+      user: entry.approval.user?.display_name,
+      date: entry.approval.date,
+    });
+  }
+  if (entry.changes_requested) {
+    return compact({
+      kind: 'changes_requested',
+      user: entry.changes_requested.user?.display_name,
+      date: entry.changes_requested.date,
+    });
+  }
+  if (entry.comment) {
+    const c = entry.comment;
+    return compact({
+      kind: 'comment',
+      user: c.user?.display_name,
+      date: c.created_on,
+      content: c.content?.raw,
+      inline: c.inline?.path,
+    });
+  }
+  if (entry.update) {
+    const u = entry.update;
+    return compact({
+      kind: 'update',
+      user: u.author?.display_name,
+      date: u.date,
+      state: u.state,
+      reason: u.reason,
+    });
+  }
+  return {};
+}
+
+/** A single test case (used to surface failing tests from a report). */
+export function presentTestCase(testCase: TestCase): Record<string, unknown> {
+  return compact({
+    name: testCase.fully_qualified_name ?? testCase.name,
+    status: testCase.status,
+    duration_ms: testCase.duration_in_ms,
+  });
+}
+
 // Pipelines -------------------------------------------------------------------
 
 /** Map a `pipeline_trigger_*` discriminator to push|manual|schedule. */
@@ -502,6 +572,41 @@ export const FILE_HISTORY_FIELDS = [
   'commit.message',
   'commit.author.raw',
   'commit.date',
+] as const;
+
+/** Fields read by {@link presentCommitStatus}. */
+export const COMMIT_STATUS_FIELDS = [
+  'key',
+  'name',
+  'state',
+  'description',
+  'url',
+  'commit.hash',
+  'updated_on',
+] as const;
+
+/** Fields read by {@link presentPrActivity} (across all four entry kinds). */
+export const PR_ACTIVITY_FIELDS = [
+  'approval.user.display_name',
+  'approval.date',
+  'changes_requested.user.display_name',
+  'changes_requested.date',
+  'comment.user.display_name',
+  'comment.created_on',
+  'comment.content.raw',
+  'comment.inline.path',
+  'update.author.display_name',
+  'update.date',
+  'update.state',
+  'update.reason',
+] as const;
+
+/** Fields read by {@link presentTestCase}. */
+export const TEST_CASE_FIELDS = [
+  'name',
+  'fully_qualified_name',
+  'status',
+  'duration_in_ms',
 ] as const;
 
 /** Fields read by {@link presentPipelineSummary} (and {@link presentTarget}). */

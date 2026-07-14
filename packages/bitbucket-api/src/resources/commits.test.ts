@@ -63,4 +63,20 @@ describe('CommitsResource', () => {
       expect(url).toContain('path=src%2Fa.ts');
     });
   });
+
+  describe('getStatuses', () => {
+    it('targets the commit statuses endpoint', async () => {
+      await resource.getStatuses('ws', 'repo', 'abc123');
+      expect(mockClient.get).toHaveBeenCalledWith('/repositories/ws/repo/commit/abc123/statuses');
+    });
+  });
+
+  describe('getPullRequests', () => {
+    it('targets the commit pullrequests endpoint', async () => {
+      await resource.getPullRequests('ws', 'repo', 'abc123');
+      expect(mockClient.get).toHaveBeenCalledWith(
+        '/repositories/ws/repo/commit/abc123/pullrequests'
+      );
+    });
+  });
 });

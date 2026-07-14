@@ -271,4 +271,27 @@ describe('PullRequestsResource', () => {
       expect(result).toEqual(mockPatch);
     });
   });
+
+  describe('phase 3 sub-resources', () => {
+    it('getDiffstat targets the diffstat endpoint', async () => {
+      await resource.getDiffstat('workspace', 'repo', 123);
+      expect(mockClient.get).toHaveBeenCalledWith(
+        '/repositories/workspace/repo/pullrequests/123/diffstat'
+      );
+    });
+
+    it('getStatuses targets the statuses endpoint', async () => {
+      await resource.getStatuses('workspace', 'repo', 123);
+      expect(mockClient.get).toHaveBeenCalledWith(
+        '/repositories/workspace/repo/pullrequests/123/statuses'
+      );
+    });
+
+    it('getActivity targets the activity endpoint', async () => {
+      await resource.getActivity('workspace', 'repo', 123);
+      expect(mockClient.get).toHaveBeenCalledWith(
+        '/repositories/workspace/repo/pullrequests/123/activity'
+      );
+    });
+  });
 });

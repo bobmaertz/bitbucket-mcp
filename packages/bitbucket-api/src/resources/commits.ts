@@ -1,5 +1,12 @@
 import type { BitbucketClient } from '../client.js';
-import type { Commit, DiffStat, PaginatedResponse, ListOptions } from '../types/index.js';
+import type {
+  Commit,
+  DiffStat,
+  CommitStatus,
+  PullRequest,
+  PaginatedResponse,
+  ListOptions,
+} from '../types/index.js';
 import { seg } from '../utils/path.js';
 import {
   buildListQuery,
@@ -79,6 +86,32 @@ export class CommitsResource {
       spec
     )}${diffstatQuery(options)}`;
     return this.client.get<PaginatedResponse<DiffStat>>(url);
+  }
+
+  /** List the CI/build statuses reported against a commit. */
+  async getStatuses(
+    workspace: string,
+    repoSlug: string,
+    commit: string,
+    options?: ListOptions
+  ): Promise<PaginatedResponse<CommitStatus>> {
+    const url = `/repositories/${seg(workspace)}/${seg(repoSlug)}/commit/${seg(
+      commit
+    )}/statuses${buildListQuery(options)}`;
+    return this.client.get<PaginatedResponse<CommitStatus>>(url);
+  }
+
+  /** List the pull requests that contain a commit. */
+  async getPullRequests(
+    workspace: string,
+    repoSlug: string,
+    commit: string,
+    options?: ListOptions
+  ): Promise<PaginatedResponse<PullRequest>> {
+    const url = `/repositories/${seg(workspace)}/${seg(repoSlug)}/commit/${seg(
+      commit
+    )}/pullrequests${buildListQuery(options)}`;
+    return this.client.get<PaginatedResponse<PullRequest>>(url);
   }
 }
 

@@ -113,8 +113,8 @@ fit for a least-privilege read-only server.
 Four phases, each independently shippable. Tool names follow the existing `bitbucket_<verb>_<noun>`
 convention; all new tools are read-only GETs behind the existing presenter/truncation patterns.
 
-**Status:** Phase 1 ✅ delivered · Phase 2 ✅ delivered · Phases 3–4 planned. The surface is now
-**27 read-only tools**.
+**Status:** Phase 1 ✅ delivered · Phase 2 ✅ delivered · Phase 3 ✅ delivered · Phase 4 planned. The
+surface is now **33 read-only tools**.
 
 ### Phase 1 — Efficiency & hygiene (no new API surface) — ✅ delivered
 
@@ -148,7 +148,15 @@ helper.
 
 Default branch resolution: reuse `get_repository`'s `mainbranch` (already presented) — no new tool.
 
-### Phase 3 — PR & CI depth (6 new tools)
+### Phase 3 — PR & CI depth (6 new tools) — ✅ delivered
+
+Delivered as `bitbucket_get_pr_diffstat`, `bitbucket_list_pr_statuses`,
+`bitbucket_list_commit_statuses`, `bitbucket_get_pr_activity`,
+`bitbucket_list_commit_pull_requests`, and `bitbucket_get_test_reports` (which composes the
+step's report summary + test cases + per-case failure reasons into one result, capping per-case
+reason lookups). PR activity entries are normalized to a `{ kind, user, date, ... }` shape;
+statuses reuse one presenter for both the PR and commit endpoints; `get_pr_diff`'s description now
+points at the cheaper diffstat first.
 
 | Tool                                  | Endpoint                                                                                                                             |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |

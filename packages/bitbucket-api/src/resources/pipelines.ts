@@ -3,6 +3,9 @@ import type {
   Pipeline,
   PipelineStep,
   PipelineSchedule,
+  TestReport,
+  TestCase,
+  TestCaseReason,
   PaginatedResponse,
   ListOptions,
 } from '../types/index.js';
@@ -75,6 +78,61 @@ export class PipelinesResource {
       pipeline
     )}/steps/${pipelineRef(step)}/log`;
     return this.client.getText(path, range);
+  }
+
+  /** Get the aggregate test-report summary for a step (pass/fail counts). */
+  async getTestReport(
+    workspace: string,
+    repoSlug: string,
+    pipeline: string,
+    step: string
+  ): Promise<TestReport> {
+    const path = `${this.stepBase(workspace, repoSlug, pipeline, step)}/test_reports`;
+    return this.client.get<TestReport>(path);
+  }
+
+  /** List the individual test cases for a step. */
+  async getTestCases(
+    workspace: string,
+    repoSlug: string,
+    pipeline: string,
+    step: string,
+    options?: ListOptions
+  ): Promise<PaginatedResponse<TestCase>> {
+    const path = `${this.stepBase(
+      workspace,
+      repoSlug,
+      pipeline,
+      step
+    )}/test_reports/test_cases${buildListQuery(options)}`;
+    return this.client.get<PaginatedResponse<TestCase>>(path);
+  }
+
+  /** Get the failure/error reasons for a single test case. */
+  async getTestCaseReasons(
+    workspace: string,
+    repoSlug: string,
+    pipeline: string,
+    step: string,
+    testCaseUuid: string,
+    options?: ListOptions
+  ): Promise<PaginatedResponse<TestCaseReason>> {
+    const path = `${this.stepBase(
+      workspace,
+      repoSlug,
+      pipeline,
+      step
+    )}/test_reports/test_cases/${pipelineRef(testCaseUuid)}/test_case_reasons${buildListQuery(
+      options
+    )}`;
+    return this.client.get<PaginatedResponse<TestCaseReason>>(path);
+  }
+
+  /** Base path for a pipeline step's sub-resources. */
+  private stepBase(workspace: string, repoSlug: string, pipeline: string, step: string): string {
+    return `/repositories/${workspace}/${repoSlug}/pipelines/${pipelineRef(
+      pipeline
+    )}/steps/${pipelineRef(step)}`;
   }
 
   /** List the repository's configured pipeline schedules. */

@@ -38,6 +38,12 @@ import {
   getDiffstat,
   listTags,
   getTag,
+  getPullRequestDiffstat,
+  listPullRequestStatuses,
+  listCommitStatuses,
+  getPullRequestActivity,
+  listCommitPullRequests,
+  getTestReports,
   type Logger,
   type TargetDefaults,
   type PipelineStatus,
@@ -178,7 +184,7 @@ export const readOnlyTools: Tool[] = [
   {
     name: 'bitbucket_get_pr_diff',
     description:
-      'Get a pull request diff, capped to max_lines (default 200) with a files-changed count.',
+      'Get a pull request diff, capped to max_lines (default 200) with a files-changed count. For just the list of changed files and their line counts, prefer the cheaper bitbucket_get_pr_diffstat first.',
     inputSchema: schema(
       {
         ...workspaceRepo,
@@ -459,6 +465,80 @@ export const readOnlyTools: Tool[] = [
       'repo',
       'name',
     ]),
+  },
+  {
+    name: 'bitbucket_get_pr_diffstat',
+    description:
+      'A pull request\'s per-file change summary (status, lines added/removed) — a cheap "what changed" without the diff body. Use before bitbucket_get_pr_diff.',
+    inputSchema: schema(
+      { ...workspaceRepo, id: { type: 'number', description: 'Pull request ID' }, ...paging },
+      ['id']
+    ),
+  },
+  {
+    name: 'bitbucket_list_pr_statuses',
+    description:
+      'List the CI/build statuses reported against a pull request (key, state, name, URL). Covers third-party CI, not just Bitbucket Pipelines.',
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        id: { type: 'number', description: 'Pull request ID' },
+        query: { type: 'string', description: 'Bitbucket query expression (optional)' },
+        sort: { type: 'string', description: 'Sort field (optional)' },
+        ...paging,
+      },
+      ['id']
+    ),
+  },
+  {
+    name: 'bitbucket_list_commit_statuses',
+    description:
+      'List the CI/build statuses reported against a commit (key, state, name, URL). Covers third-party CI, not just Bitbucket Pipelines.',
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        commit: { type: 'string', description: 'Commit hash or ref' },
+        ...paging,
+      },
+      ['repo', 'commit']
+    ),
+  },
+  {
+    name: 'bitbucket_get_pr_activity',
+    description:
+      "A pull request's activity timeline (updates, approvals, change requests, and comments) as normalized { kind, user, date, ... } entries.",
+    inputSchema: schema(
+      { ...workspaceRepo, id: { type: 'number', description: 'Pull request ID' }, ...paging },
+      ['id']
+    ),
+  },
+  {
+    name: 'bitbucket_list_commit_pull_requests',
+    description: 'List the pull requests that contain a commit ("which PR introduced this?").',
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        commit: { type: 'string', description: 'Commit hash or ref' },
+        ...paging,
+      },
+      ['repo', 'commit']
+    ),
+  },
+  {
+    name: 'bitbucket_get_test_reports',
+    description:
+      'Summarize a pipeline step’s test report: aggregate pass/fail/error/skip counts plus the failing/errored test cases annotated with their failure reasons. Turns "the build failed" into named failing tests without grepping the raw log.',
+    inputSchema: schema(
+      {
+        ...workspaceRepo,
+        pipeline: {
+          type: ['string', 'number'],
+          description: 'Pipeline build number or UUID',
+        },
+        step: { type: 'string', description: 'Step UUID' },
+      },
+      ['pipeline', 'step']
+    ),
   },
 ];
 
@@ -774,5 +854,66 @@ export const handlers: Record<string, Handler> = {
   bitbucket_get_tag: async (ctx, args) => {
     const { workspace, repo } = resolveTarget(ctx.defaults, args);
     return json(await getTag(ctx.api, { workspace, repo, name: str(args, 'name') }));
+  },
+
+  bitbucket_get_pr_diffstat: async (ctx, args) => {
+    const base = listArgs(ctx, args);
+    return json(await getPullRequestDiffstat(ctx.api, { ...base, id: num(args, 'id') }));
+  },
+
+  bitbucket_list_pr_statuses: async (ctx, args) => {
+    const base = listArgs(ctx, args);
+    return json(await listPullRequestStatuses(ctx.api, { ...base, id: num(args, 'id') }));
+  },
+
+  bitbucket_list_commit_statuses: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await listCommitStatuses(ctx.api, {
+        workspace,
+        repo,
+        commit: str(args, 'commit'),
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+      })
+    );
+  },
+
+  bitbucket_get_pr_activity: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await getPullRequestActivity(ctx.api, {
+        workspace,
+        repo,
+        id: num(args, 'id'),
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+      })
+    );
+  },
+
+  bitbucket_list_commit_pull_requests: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await listCommitPullRequests(ctx.api, {
+        workspace,
+        repo,
+        commit: str(args, 'commit'),
+        page: args.page as number | undefined,
+        pagelen: args.pagelen as number | undefined,
+      })
+    );
+  },
+
+  bitbucket_get_test_reports: async (ctx, args) => {
+    const { workspace, repo } = resolveTarget(ctx.defaults, args);
+    return json(
+      await getTestReports(ctx.api, {
+        workspace,
+        repo,
+        pipeline: ref(args, 'pipeline'),
+        step: str(args, 'step'),
+      })
+    );
   },
 };
