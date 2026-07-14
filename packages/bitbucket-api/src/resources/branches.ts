@@ -1,5 +1,11 @@
 import type { BitbucketClient } from '../client.js';
-import type { Branch, CreateBranchParams, PaginatedResponse, ListOptions } from '../types/index.js';
+import type {
+  Branch,
+  BranchingModel,
+  CreateBranchParams,
+  PaginatedResponse,
+  ListOptions,
+} from '../types/index.js';
 import { seg } from '../utils/path.js';
 import { buildListQuery, type FieldOptions } from '../utils/query.js';
 
@@ -39,6 +45,21 @@ export class BranchesResource {
       repoSlug
     )}/refs/branches/${encodedBranchName}${buildListQuery(options)}`;
     return this.client.get<Branch>(path);
+  }
+
+  /**
+   * Get the repository's effective branching model (development/production
+   * branches and branch-type prefixes, including project-level inheritance).
+   */
+  async getBranchingModel(
+    workspace: string,
+    repoSlug: string,
+    options?: FieldOptions
+  ): Promise<BranchingModel> {
+    const path = `/repositories/${seg(workspace)}/${seg(
+      repoSlug
+    )}/effective-branching-model${buildListQuery(options)}`;
+    return this.client.get<BranchingModel>(path);
   }
 
   /**

@@ -61,16 +61,7 @@ export class WorkspacesResource {
       return this.client.get<PaginatedResponse<WorkspaceMembership>>(options.nextUrl);
     }
 
-    const params = new URLSearchParams();
-
-    if (options?.page) params.append('page', options.page.toString());
-    if (options?.pagelen) params.append('pagelen', options.pagelen.toString());
-    if (options?.q) params.append('q', options.q);
-    if (options?.sort) params.append('sort', options.sort);
-
-    const path = `/workspaces/${seg(workspace)}/members${
-      params.toString() ? `?${params.toString()}` : ''
-    }`;
+    const path = `/workspaces/${seg(workspace)}/members${buildListQuery(options)}`;
     return this.client.get<PaginatedResponse<WorkspaceMembership>>(path);
   }
 }

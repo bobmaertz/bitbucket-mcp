@@ -62,6 +62,14 @@ describe('WorkspacesResource', () => {
     expect(path).toContain('pagelen=10');
   });
 
+  it('lists members at the workspace members endpoint', async () => {
+    (mockClient.get as any).mockResolvedValue({ values: [], size: 0 });
+
+    await resource.listMembers('acme');
+
+    expect(mockClient.get).toHaveBeenCalledWith('/workspaces/acme/members');
+  });
+
   it('resolves a single member and URL-encodes a brace-wrapped UUID', async () => {
     const membership = {
       type: 'workspace_membership',

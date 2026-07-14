@@ -15,6 +15,8 @@ import { PipelinesResource } from './resources/pipelines.js';
 import { SourceResource } from './resources/source.js';
 import { CommitsResource } from './resources/commits.js';
 import { TagsResource } from './resources/tags.js';
+import { ProjectsResource } from './resources/projects.js';
+import { DeploymentsResource } from './resources/deployments.js';
 
 /**
  * Main Bitbucket API client with all resource modules
@@ -33,6 +35,8 @@ export class BitbucketAPI {
   public source: SourceResource;
   public commits: CommitsResource;
   public tags: TagsResource;
+  public projects: ProjectsResource;
+  public deployments: DeploymentsResource;
 
   constructor(config: ClientConfig) {
     this.client = new BitbucketClient(config);
@@ -49,6 +53,8 @@ export class BitbucketAPI {
     this.source = new SourceResource(this.client);
     this.commits = new CommitsResource(this.client);
     this.tags = new TagsResource(this.client);
+    this.projects = new ProjectsResource(this.client);
+    this.deployments = new DeploymentsResource(this.client);
   }
 
   /**

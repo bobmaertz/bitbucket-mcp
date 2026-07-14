@@ -1,6 +1,6 @@
 # Bitbucket MCP Server
 
-Read-only [MCP](https://modelcontextprotocol.io/) server for **Bitbucket Cloud** — lets Claude and other LLM clients browse repositories, source files, commits, pull requests, comments, tasks, branches, tags, CI statuses, and pipelines. Token-sparse output, no write access, credential never leaves the client layer.
+Read-only [MCP](https://modelcontextprotocol.io/) server for **Bitbucket Cloud** — lets Claude and other LLM clients browse repositories, source files, commits, pull requests, comments, tasks, branches, tags, CI statuses, pipelines, deployments, projects, and workspaces. Token-sparse output, no write access, credential never leaves the client layer.
 
 ## Quickstart
 
@@ -77,6 +77,13 @@ Read-only. `workspace` defaults to `BITBUCKET_WORKSPACE`; repo-scoped tools requ
 | `bitbucket_get_pr_activity`           | `repo`, `id`, `page?`                                                               |
 | `bitbucket_list_commit_pull_requests` | `repo`, `commit`, `page?`                                                           |
 | `bitbucket_get_test_reports`          | `repo`, `pipeline` (build number or UUID), `step`                                   |
+| `bitbucket_list_workspaces`           | `page?`                                                                             |
+| `bitbucket_list_projects`             | `workspace?`, `query?`, `sort?`, `page?`                                            |
+| `bitbucket_get_project`               | `workspace?`, `key`                                                                 |
+| `bitbucket_list_deployments`          | `repo`, `page?`                                                                     |
+| `bitbucket_list_environments`         | `repo`, `page?`                                                                     |
+| `bitbucket_get_branching_model`       | `repo`                                                                              |
+| `bitbucket_list_workspace_members`    | `workspace?`, `page?`                                                               |
 
 `bitbucket_list_repositories` needs no args: omit `workspace` to list the configured `BITBUCKET_WORKSPACE`, or pass `workspace` to scope to another. There is no cross-workspace listing — Atlassian retired both `GET /repositories` and `GET /workspaces` under CHANGE-2770.
 
@@ -89,6 +96,8 @@ Read-only. `workspace` defaults to `BITBUCKET_WORKSPACE`; repo-scoped tools requ
 The source and commit tools give an agent eyes on the repository. `bitbucket_list_directory` and `bitbucket_get_file` default `commit` to the repo's main branch (and echo the resolved `ref`), so you can browse without knowing the default branch; use `max_depth` to pull a recursive tree in one call. `bitbucket_get_file` caps content by `max_bytes`/`max_lines` and returns `binary: true` (no content) for binary files. For "what changed", prefer `bitbucket_get_diffstat` (a cheap per-file summary) before pulling `bitbucket_get_commit_diff`, which supports the same `path`/`context` scoping as the PR diff.
 
 For CI, `bitbucket_list_pr_statuses` and `bitbucket_list_commit_statuses` surface build/check results from any reporting system (not just Bitbucket Pipelines), and `bitbucket_get_test_reports` turns a failed pipeline step into a summary of pass/fail counts plus the named failing tests and their failure reasons — no log grepping. `bitbucket_get_pr_activity` gives a normalized timeline of updates, approvals, change requests, and comments, and `bitbucket_list_commit_pull_requests` answers "which PR introduced this commit?".
+
+For discovery and governance, `bitbucket_list_workspaces` finds the workspace IDs you can pass elsewhere, `bitbucket_list_projects` / `bitbucket_get_project` and `bitbucket_list_workspace_members` cover project and membership metadata, `bitbucket_list_deployments` / `bitbucket_list_environments` give release visibility, and `bitbucket_get_branching_model` reports the repo's development/production branch conventions.
 
 ### Efficiency
 

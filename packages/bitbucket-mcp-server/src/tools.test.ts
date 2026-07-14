@@ -18,6 +18,7 @@ describe('read-only tool surface', () => {
     expect(names.sort()).toEqual(
       [
         'bitbucket_get_branch',
+        'bitbucket_get_branching_model',
         'bitbucket_get_comment',
         'bitbucket_get_commit',
         'bitbucket_get_commit_diff',
@@ -29,6 +30,7 @@ describe('read-only tool surface', () => {
         'bitbucket_get_pr_commits',
         'bitbucket_get_pr_diff',
         'bitbucket_get_pr_diffstat',
+        'bitbucket_get_project',
         'bitbucket_get_pull_request',
         'bitbucket_get_repository',
         'bitbucket_get_step_log',
@@ -39,17 +41,22 @@ describe('read-only tool surface', () => {
         'bitbucket_list_commit_pull_requests',
         'bitbucket_list_commit_statuses',
         'bitbucket_list_commits',
+        'bitbucket_list_deployments',
         'bitbucket_list_directory',
+        'bitbucket_list_environments',
         'bitbucket_list_pipeline_steps',
         'bitbucket_list_pipelines',
         'bitbucket_list_pr_comments',
         'bitbucket_list_pr_statuses',
         'bitbucket_list_pr_tasks',
+        'bitbucket_list_projects',
         'bitbucket_list_pull_requests',
         'bitbucket_list_repositories',
         'bitbucket_list_schedules',
         'bitbucket_list_tags',
         'bitbucket_list_user_pull_requests',
+        'bitbucket_list_workspace_members',
+        'bitbucket_list_workspaces',
         'bitbucket_whois',
       ].sort()
     );
@@ -527,5 +534,55 @@ describe('pr/ci-depth handlers', () => {
     const parsed = JSON.parse(textOf(result));
     expect(parsed.no_report).toBe(true);
     expect(parsed.failing).toEqual([]);
+  });
+});
+
+describe('workspace/governance handlers', () => {
+  function ctxWith(api: Record<string, unknown>): ToolContext {
+    return {
+      api: api as unknown as BitbucketAPI,
+      defaults: { workspace: 'acme' },
+      logger: createLogger('error'),
+    };
+  }
+
+  it('list_projects defaults to the configured workspace', async () => {
+    const list = vi.fn().mockResolvedValue({ size: 0, next: undefined, values: [] });
+    const ctx = ctxWith({ projects: { list } });
+
+    await handlers.bitbucket_list_projects(ctx, {});
+    expect(list).toHaveBeenCalledWith('acme', expect.any(Object));
+  });
+
+  it('list_workspaces needs no workspace and unwraps entries', async () => {
+    const list = vi.fn().mockResolvedValue({
+      size: 1,
+      next: undefined,
+      values: [{ slug: 'acme', name: 'Acme', uuid: '{w}', links: {} }],
+    });
+    const ctx = ctxWith({ workspaces: { list } });
+
+    const result = await handlers.bitbucket_list_workspaces(ctx, {});
+    expect(list).toHaveBeenCalledOnce();
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.items[0]).toMatchObject({ slug: 'acme', name: 'Acme' });
+  });
+
+  it('get_branching_model shapes dev/prod branches and types', async () => {
+    const getBranchingModel = vi.fn().mockResolvedValue({
+      development: { branch: { name: 'develop' } },
+      production: { enabled: true, branch: { name: 'main' } },
+      branch_types: [{ kind: 'feature', prefix: 'feature/' }],
+    });
+    const ctx = ctxWith({ branches: { getBranchingModel } });
+
+    const result = await handlers.bitbucket_get_branching_model(ctx, { repo: 'repo' });
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed).toEqual({
+      development: 'develop',
+      production: 'main',
+      production_enabled: true,
+      branch_types: [{ kind: 'feature', prefix: 'feature/' }],
+    });
   });
 });

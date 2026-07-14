@@ -94,6 +94,10 @@ export interface Project {
   key: string;
   name: string;
   uuid: string;
+  description?: string;
+  is_private?: boolean;
+  created_on?: string;
+  updated_on?: string;
   links: Links;
   type: 'project';
 }

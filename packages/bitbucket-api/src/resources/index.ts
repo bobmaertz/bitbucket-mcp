@@ -13,3 +13,5 @@ export * from './pipelines.js';
 export * from './source.js';
 export * from './commits.js';
 export * from './tags.js';
+export * from './projects.js';
+export * from './deployments.js';

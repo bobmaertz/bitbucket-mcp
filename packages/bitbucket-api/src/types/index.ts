@@ -14,3 +14,6 @@ export * from './tag.js';
 export * from './status.js';
 export * from './activity.js';
 export * from './testreport.js';
+export * from './deployment.js';
+export * from './branchingmodel.js';
+export * from './member.js';
