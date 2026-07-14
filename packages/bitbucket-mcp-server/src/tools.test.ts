@@ -19,14 +19,22 @@ describe('read-only tool surface', () => {
       [
         'bitbucket_get_branch',
         'bitbucket_get_comment',
+        'bitbucket_get_commit',
+        'bitbucket_get_commit_diff',
+        'bitbucket_get_diffstat',
+        'bitbucket_get_file',
+        'bitbucket_get_file_history',
         'bitbucket_get_pipeline',
         'bitbucket_get_pr_commits',
         'bitbucket_get_pr_diff',
         'bitbucket_get_pull_request',
         'bitbucket_get_repository',
         'bitbucket_get_step_log',
+        'bitbucket_get_tag',
         'bitbucket_get_task',
         'bitbucket_list_branches',
+        'bitbucket_list_commits',
+        'bitbucket_list_directory',
         'bitbucket_list_pipeline_steps',
         'bitbucket_list_pipelines',
         'bitbucket_list_pr_comments',
@@ -34,6 +42,7 @@ describe('read-only tool surface', () => {
         'bitbucket_list_pull_requests',
         'bitbucket_list_repositories',
         'bitbucket_list_schedules',
+        'bitbucket_list_tags',
         'bitbucket_list_user_pull_requests',
         'bitbucket_whois',
       ].sort()
@@ -305,12 +314,20 @@ describe('pipeline handlers', () => {
     const ctx = ctxWith({ get });
 
     await handlers.bitbucket_get_pipeline(ctx, { repo: 'repo', pipeline: 42 });
-    expect(get).toHaveBeenCalledWith('acme', 'repo', '42');
+    expect(get).toHaveBeenCalledWith(
+      'acme',
+      'repo',
+      '42',
+      expect.objectContaining({ fields: expect.any(String) })
+    );
   });
 
   it('tails and greps step logs, reporting truncation', async () => {
     const lines = Array.from({ length: 10 }, (_, i) => (i % 2 ? `ERROR line ${i}` : `info ${i}`));
-    const getStepLog = vi.fn().mockResolvedValue(lines.join('\n'));
+    const text = lines.join('\n');
+    const getStepLog = vi
+      .fn()
+      .mockResolvedValue({ text, totalBytes: Buffer.byteLength(text), partial: false });
     const ctx = ctxWith({ getStepLog });
 
     const result = await handlers.bitbucket_get_step_log(ctx, {
@@ -321,7 +338,8 @@ describe('pipeline handlers', () => {
       tail: 2,
     });
 
-    expect(getStepLog).toHaveBeenCalledWith('acme', 'repo', '7', '{s}');
+    // grep must scan the whole log, so no Range header is sent (undefined).
+    expect(getStepLog).toHaveBeenCalledWith('acme', 'repo', '7', '{s}', undefined);
     const parsed = JSON.parse(textOf(result));
     expect(parsed.returned_lines).toBe(2);
     expect(parsed.truncated).toBe(true);
@@ -333,5 +351,98 @@ describe('pipeline handlers', () => {
     await expect(
       handlers.bitbucket_get_step_log(ctx, { repo: 'repo', pipeline: '7' })
     ).rejects.toThrow(/step/);
+  });
+});
+
+describe('source/commits/tags handlers', () => {
+  function ctxWith(api: Record<string, unknown>): ToolContext {
+    return {
+      api: api as unknown as BitbucketAPI,
+      defaults: { workspace: 'acme' },
+      logger: createLogger('error'),
+    };
+  }
+
+  it('get_file requires a path', async () => {
+    const ctx = ctxWith({ source: {}, repositories: {} });
+    await expect(handlers.bitbucket_get_file(ctx, { repo: 'repo' })).rejects.toThrow(/path/);
+  });
+
+  it('list_directory lists entries and echoes the resolved ref/path', async () => {
+    const listDirectory = vi.fn().mockResolvedValue({
+      size: 2,
+      next: undefined,
+      values: [
+        { path: 'src/a.ts', type: 'commit_file', size: 10, mimetype: 'text/plain' },
+        { path: 'src/lib', type: 'commit_directory' },
+      ],
+    });
+    const ctx = ctxWith({ source: { listDirectory } });
+
+    const result = await handlers.bitbucket_list_directory(ctx, {
+      repo: 'repo',
+      commit: 'main',
+      path: 'src',
+      max_depth: 2,
+    });
+    // Explicit commit means no default-branch lookup is needed.
+    expect(listDirectory).toHaveBeenCalledWith(
+      'acme',
+      'repo',
+      'main',
+      'src',
+      expect.objectContaining({ maxDepth: 2, fields: expect.any(String) })
+    );
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.ref).toBe('main');
+    expect(parsed.path).toBe('src');
+    expect(parsed.items).toEqual([
+      { path: 'src/a.ts', type: 'file', size: 10, mimetype: 'text/plain' },
+      { path: 'src/lib', type: 'dir' },
+    ]);
+  });
+
+  it('get_commit_diff forwards path/context and caps lines', async () => {
+    const diff = ['diff --git a/x b/x', ...Array.from({ length: 50 }, (_, i) => `+l ${i}`)].join(
+      '\n'
+    );
+    const getDiff = vi.fn().mockResolvedValue(diff);
+    const ctx = ctxWith({ commits: { getDiff } });
+
+    const result = await handlers.bitbucket_get_commit_diff(ctx, {
+      repo: 'repo',
+      spec: 'aaa..bbb',
+      path: 'src/x.ts',
+      context: 0,
+      max_lines: 10,
+    });
+    expect(getDiff).toHaveBeenCalledWith(
+      'acme',
+      'repo',
+      'aaa..bbb',
+      expect.objectContaining({ path: 'src/x.ts', context: 0 })
+    );
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.truncated).toBe(true);
+    expect(parsed.diff.split('\n')).toHaveLength(10);
+  });
+
+  it('get_tag resolves a tag by name', async () => {
+    const get = vi.fn().mockResolvedValue({
+      name: 'v1.0.0',
+      target: { hash: 'deadbeefcafe0000', date: '2026-07-01T10:00:00Z' },
+      tagger: { user: { display_name: 'Ada' } },
+    });
+    const ctx = ctxWith({ tags: { get } });
+
+    const result = await handlers.bitbucket_get_tag(ctx, { repo: 'repo', name: 'v1.0.0' });
+    expect(get).toHaveBeenCalledWith(
+      'acme',
+      'repo',
+      'v1.0.0',
+      expect.objectContaining({ fields: expect.any(String) })
+    );
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed).toMatchObject({ name: 'v1.0.0', target_hash: 'deadbeefcafe', tagger: 'Ada' });
   });
 });

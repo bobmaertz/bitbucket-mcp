@@ -7,6 +7,7 @@ import type {
   ListOptions,
 } from '../types/index.js';
 import { seg } from '../utils/path.js';
+import { buildListQuery, type FieldOptions } from '../utils/query.js';
 
 /**
  * Tasks resource API
@@ -23,18 +24,9 @@ export class TasksResource {
     prId: number,
     options?: ListOptions
   ): Promise<PaginatedResponse<Task>> {
-    const params = new URLSearchParams();
-
-    if (options?.page) params.append('page', options.page.toString());
-    if (options?.pagelen) params.append('pagelen', options.pagelen.toString());
-    if (options?.q) params.append('q', options.q);
-    if (options?.sort) params.append('sort', options.sort);
-
-    // Tasks are accessed through comments endpoint with filtering
-    // In practice, Bitbucket may have a dedicated tasks endpoint or tasks are part of comments
-    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/tasks${
-      params.toString() ? `?${params.toString()}` : ''
-    }`;
+    const path = `/repositories/${seg(workspace)}/${seg(
+      repoSlug
+    )}/pullrequests/${prId}/tasks${buildListQuery(options)}`;
 
     return this.client.get<PaginatedResponse<Task>>(path);
   }
@@ -42,8 +34,16 @@ export class TasksResource {
   /**
    * Get a specific task
    */
-  async get(workspace: string, repoSlug: string, prId: number, taskId: number): Promise<Task> {
-    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/pullrequests/${prId}/tasks/${taskId}`;
+  async get(
+    workspace: string,
+    repoSlug: string,
+    prId: number,
+    taskId: number,
+    options?: FieldOptions
+  ): Promise<Task> {
+    const path = `/repositories/${seg(workspace)}/${seg(
+      repoSlug
+    )}/pullrequests/${prId}/tasks/${taskId}${buildListQuery(options)}`;
     return this.client.get<Task>(path);
   }
 

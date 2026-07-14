@@ -22,6 +22,8 @@ export interface CoreConfig {
   allowWrites: boolean;
   /** True when deprecated username/app-password auth was supplied. */
   usedLegacyAuth: boolean;
+  /** True when a workspace/project/repo Access Token (Bearer auth) was supplied. */
+  usedAccessToken: boolean;
 }
 
 /**
@@ -31,7 +33,7 @@ export interface PublicConfig {
   workspace: string;
   logLevel: LogLevel;
   allowWrites: boolean;
-  authMode: 'api-token' | 'legacy-app-password';
+  authMode: 'access-token' | 'api-token' | 'legacy-app-password';
 }
 
 function trimmed(value: string | undefined): string | undefined {
@@ -42,20 +44,34 @@ function trimmed(value: string | undefined): string | undefined {
 /**
  * Load configuration from environment variables (12-factor).
  *
- * Canonical auth: `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN`. The deprecated
- * `BITBUCKET_USERNAME` + `BITBUCKET_APP_PASSWORD` pair is accepted as a
- * fallback (App Passwords are being removed by Atlassian in 2026).
+ * Auth precedence:
+ * 1. `BITBUCKET_ACCESS_TOKEN` — a workspace/project/repo Access Token (Bearer,
+ *    scaled rate limits).
+ * 2. `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN` — the canonical Atlassian
+ *    API-token pair (Basic).
+ * 3. `BITBUCKET_USERNAME` + `BITBUCKET_APP_PASSWORD` — deprecated App Password
+ *    fallback (being removed by Atlassian in 2026).
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): CoreConfig {
+  const accessToken = env.BITBUCKET_ACCESS_TOKEN?.trim() || undefined;
   const email = trimmed(env.BITBUCKET_EMAIL);
   const apiToken = env.BITBUCKET_API_TOKEN?.trim() || undefined;
   const username = trimmed(env.BITBUCKET_USERNAME);
   const appPassword = env.BITBUCKET_APP_PASSWORD?.trim() || undefined;
   const workspace = trimmed(env.BITBUCKET_WORKSPACE);
 
-  const usedLegacyAuth = !email && !apiToken && Boolean(username || appPassword);
+  const usedAccessToken = Boolean(accessToken);
+  const usedLegacyAuth =
+    !usedAccessToken && !email && !apiToken && Boolean(username || appPassword);
 
-  const auth: AuthConfig = usedLegacyAuth ? { username, appPassword } : { email, apiToken };
+  let auth: AuthConfig;
+  if (usedAccessToken) {
+    auth = { accessToken };
+  } else if (usedLegacyAuth) {
+    auth = { username, appPassword };
+  } else {
+    auth = { email, apiToken };
+  }
 
   const rawLevel = trimmed(env.LOG_LEVEL)?.toLowerCase();
   const logLevel = (LOG_LEVELS as readonly string[]).includes(rawLevel ?? '')
@@ -68,6 +84,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CoreConfig {
     logLevel,
     allowWrites: /^(1|true|yes)$/i.test(env.BITBUCKET_ALLOW_WRITES?.trim() ?? ''),
     usedLegacyAuth,
+    usedAccessToken,
   };
 
   return config;
@@ -79,6 +96,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CoreConfig {
 export function validateConfig(config: CoreConfig): void {
   if (!config.workspace) {
     throw new Error('BITBUCKET_WORKSPACE is required');
+  }
+
+  if (config.usedAccessToken) {
+    if (!config.auth.accessToken) {
+      throw new Error('BITBUCKET_ACCESS_TOKEN is required');
+    }
+    return;
   }
 
   if (config.usedLegacyAuth) {
@@ -108,6 +132,10 @@ export function publicConfig(config: CoreConfig): PublicConfig {
     workspace: config.workspace,
     logLevel: config.logLevel,
     allowWrites: config.allowWrites,
-    authMode: config.usedLegacyAuth ? 'legacy-app-password' : 'api-token',
+    authMode: config.usedAccessToken
+      ? 'access-token'
+      : config.usedLegacyAuth
+        ? 'legacy-app-password'
+        : 'api-token',
   };
 }

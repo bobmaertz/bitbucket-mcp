@@ -189,4 +189,74 @@ describe('BitbucketClient', () => {
       await expect(client.get('/x')).rejects.toThrow(/\[REDACTED\]/);
     });
   });
+
+  describe('auth scheme', () => {
+    it('sends a Bearer header for an access token', () => {
+      makeClient({ accessToken: 'ATCTT-abc' });
+      expect(axios.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: 'Bearer ATCTT-abc' }),
+        })
+      );
+    });
+  });
+
+  describe('getText', () => {
+    it('requests text with a Range header and reports size from Content-Range', async () => {
+      const { client, request } = makeClient();
+      request.mockResolvedValue({
+        data: 'tail bytes',
+        status: 206,
+        headers: { 'content-range': 'bytes 990-999/1000' },
+      });
+
+      const result = await client.getText('/log', 'bytes=-10');
+
+      expect(result).toEqual({ text: 'tail bytes', totalBytes: 1000, partial: true });
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'GET',
+          url: '/log',
+          responseType: 'text',
+          headers: expect.objectContaining({ Accept: '*/*', Range: 'bytes=-10' }),
+        })
+      );
+    });
+
+    it('falls back to Content-Length on a full 200 response', async () => {
+      const { client, request } = makeClient();
+      request.mockResolvedValue({
+        data: 'whole body',
+        status: 200,
+        headers: { 'content-length': '10' },
+      });
+
+      const result = await client.getText('/log');
+      expect(result).toEqual({ text: 'whole body', totalBytes: 10, partial: false });
+    });
+  });
+
+  describe('rate-limit awareness', () => {
+    it('fires the near-limit callback when X-RateLimit-NearLimit is set', async () => {
+      const onRateLimitNearLimit = vi.fn();
+      const { client, request } = makeClient({ onRateLimitNearLimit });
+      request.mockResolvedValue({
+        data: { ok: true },
+        status: 200,
+        headers: { 'x-ratelimit-nearlimit': 'true' },
+      });
+
+      await client.get('/x');
+      expect(onRateLimitNearLimit).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire when the header is absent', async () => {
+      const onRateLimitNearLimit = vi.fn();
+      const { client, request } = makeClient({ onRateLimitNearLimit });
+      request.mockResolvedValue({ data: {}, status: 200, headers: {} });
+
+      await client.get('/x');
+      expect(onRateLimitNearLimit).not.toHaveBeenCalled();
+    });
+  });
 });

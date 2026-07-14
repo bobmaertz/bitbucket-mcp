@@ -83,8 +83,7 @@ A Model Context Protocol server that exposes Bitbucket functionality to LLM appl
 
 **Design Documents:**
 
-- `docs/ai/DESIGN.md` - Complete architecture and design decisions
-- `docs/ai/IMPLEMENTATION_PLAN.md` - Detailed implementation roadmap
+- `docs/API_AUDIT_AND_ROADMAP.md` - API gap analysis, architecture notes, and the phased roadmap
 
 **User Documentation:**
 
@@ -127,9 +126,10 @@ bitbucket_mcp/
 │       ├── package.json
 │       └── tsconfig.json
 │
-├── docs/ai/                        # Design documentation
-│   ├── DESIGN.md
-│   └── IMPLEMENTATION_PLAN.md
+├── docs/                           # Documentation
+│   ├── GETTING_STARTED.md
+│   ├── PROJECT_SUMMARY.md
+│   └── API_AUDIT_AND_ROADMAP.md
 │
 ├── Configuration Files
 │   ├── package.json                # Root workspace config

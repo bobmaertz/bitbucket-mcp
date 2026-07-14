@@ -1,4 +1,9 @@
-import { BitbucketAPI, NotFoundError, PaginationHelper } from '@bobmaertz/bitbucket-api';
+import {
+  BitbucketAPI,
+  BitbucketError,
+  NotFoundError,
+  PaginationHelper,
+} from '@bobmaertz/bitbucket-api';
 import type { PaginatedResponse, PullRequest, PullRequestState } from '@bobmaertz/bitbucket-api';
 import type { CoreConfig } from './config.js';
 import {
@@ -15,6 +20,30 @@ import {
   presentSchedule,
   presentRepository,
   presentUser,
+  presentTreeEntry,
+  presentFileMeta,
+  presentDiffstat,
+  presentTag,
+  presentFileHistoryEntry,
+  objectFields,
+  listFields,
+  PR_SUMMARY_FIELDS,
+  USER_PR_SUMMARY_FIELDS,
+  PR_DETAIL_FIELDS,
+  COMMENT_FIELDS,
+  TASK_FIELDS,
+  BRANCH_FIELDS,
+  REPOSITORY_FIELDS,
+  COMMIT_FIELDS,
+  PIPELINE_SUMMARY_FIELDS,
+  PIPELINE_DETAIL_FIELDS,
+  PIPELINE_STEP_FIELDS,
+  SCHEDULE_FIELDS,
+  TREE_ENTRY_FIELDS,
+  FILE_META_FIELDS,
+  DIFFSTAT_FIELDS,
+  TAG_FIELDS,
+  FILE_HISTORY_FIELDS,
 } from './presenters.js';
 
 /**
@@ -55,22 +84,34 @@ export interface AggregatedPage<T> {
 const DEFAULT_PAGELEN = 25;
 /** Bitbucket's hard server-side cap on items per page. */
 const MAX_PAGELEN = 100;
+/**
+ * Bitbucket silently caps pull-request listings at 50 per page regardless of the
+ * requested `pagelen`; clamp to that so the advertised max matches reality.
+ */
+const PR_MAX_PAGELEN = 50;
 /** Default safety cap on pages fetched when aggregating a full result set. */
 const DEFAULT_MAX_PAGES = 10;
 
 /**
  * Resolve a caller-supplied `pagelen` to a sane value: default when omitted,
- * and clamped to `[1, MAX_PAGELEN]` so a malformed or oversized request can't
- * ask for an unbounded page (the tool schema advertises "max 100").
+ * and clamped to `[1, cap]` so a malformed or oversized request can't ask for an
+ * unbounded page. `cap` defaults to Bitbucket's hard limit of 100 but some
+ * endpoints cap lower (see {@link PR_MAX_PAGELEN}).
  */
-function clampPagelen(pagelen?: number): number {
-  if (!Number.isFinite(pagelen)) return DEFAULT_PAGELEN;
-  return Math.min(Math.max(Math.floor(pagelen as number), 1), MAX_PAGELEN);
+function clampPagelen(pagelen?: number, cap: number = MAX_PAGELEN): number {
+  if (!Number.isFinite(pagelen)) return Math.min(DEFAULT_PAGELEN, cap);
+  return Math.min(Math.max(Math.floor(pagelen as number), 1), cap);
 }
 
-/** Construct the API client from config. The credential stays inside it. */
-export function createApi(config: CoreConfig): BitbucketAPI {
-  return new BitbucketAPI(config.auth);
+/** Construct the API client from config. The credential stays inside it.
+ *
+ * An optional `onRateLimitNearLimit` callback (typically wired to a logger)
+ * fires when Bitbucket signals the request quota is nearly exhausted. */
+export function createApi(
+  config: CoreConfig,
+  options?: { onRateLimitNearLimit?: () => void }
+): BitbucketAPI {
+  return new BitbucketAPI({ ...config.auth, onRateLimitNearLimit: options?.onRateLimitNearLimit });
 }
 
 /** Non-secret target defaults handed to tool handlers (no credential). */
@@ -116,9 +157,10 @@ export async function listPullRequests(
   const response = await api.pullRequests.list(params.workspace, params.repo, {
     state: params.state ?? 'OPEN',
     page,
-    pagelen: clampPagelen(params.pagelen),
+    pagelen: clampPagelen(params.pagelen, PR_MAX_PAGELEN),
     q: params.query,
     sort: params.sort,
+    fields: listFields(PR_SUMMARY_FIELDS),
   });
   return toPage(response, presentPullRequestSummary, page);
 }
@@ -266,7 +308,7 @@ export async function listUserPullRequests(
   }
 
   const selectedUser = await resolveSelectedUser(api, params.workspace, params.user);
-  const pagelen = clampPagelen(params.pagelen ?? MAX_PAGELEN);
+  const pagelen = clampPagelen(params.pagelen ?? PR_MAX_PAGELEN, PR_MAX_PAGELEN);
   const sort = params.sort ?? '-updated_on';
   const state = params.state ?? 'OPEN';
   const maxPages = Number.isFinite(params.maxPages)
@@ -285,6 +327,7 @@ export async function listUserPullRequests(
         q: params.query,
         sort,
         nextUrl,
+        fields: listFields(USER_PR_SUMMARY_FIELDS),
       });
       pagesFetched++;
       lastSize = response.size ?? lastSize;
@@ -311,7 +354,9 @@ export async function getPullRequest(
   api: BitbucketAPI,
   params: { workspace: string; repo: string; id: number }
 ): Promise<Record<string, unknown>> {
-  const pr = await api.pullRequests.get(params.workspace, params.repo, params.id);
+  const pr = await api.pullRequests.get(params.workspace, params.repo, params.id, {
+    fields: objectFields(PR_DETAIL_FIELDS),
+  });
   return presentPullRequest(pr);
 }
 
@@ -323,6 +368,7 @@ export async function getPullRequestCommits(
   const response = await api.pullRequests.getCommits(params.workspace, params.repo, params.id, {
     page,
     pagelen: clampPagelen(params.pagelen),
+    fields: listFields(COMMIT_FIELDS),
   });
   return toPage(response, presentCommit, page);
 }
@@ -330,18 +376,49 @@ export async function getPullRequestCommits(
 /**
  * Get a PR diff, capped to `maxLines` (default 200) with a files-changed
  * summary, since full diffs blow up context.
+ *
+ * `path` scopes the diff to one or more files server-side, and `context` sets
+ * the number of context lines per hunk — both cut the payload at the source
+ * rather than downloading everything and trimming. When `path` narrows the diff
+ * to specific files, `files_changed` reflects only what Bitbucket returned.
  */
-export async function getPullRequestDiff(
-  api: BitbucketAPI,
-  params: { workspace: string; repo: string; id: number; maxLines?: number }
-): Promise<{ diff: string; truncated: boolean; total_lines: number; files_changed: number }> {
-  const maxLines = params.maxLines ?? 200;
-  const raw = await api.pullRequests.getDiff(params.workspace, params.repo, params.id);
+export interface TruncatedDiff {
+  diff: string;
+  truncated: boolean;
+  total_lines: number;
+  files_changed: number;
+}
+
+const DEFAULT_DIFF_MAX_LINES = 200;
+
+/**
+ * Cap a raw unified diff to `maxLines` and count the files it touches (one per
+ * `diff --git` header). Shared by the PR and commit diff operations.
+ */
+function truncateDiff(raw: string, maxLines: number): TruncatedDiff {
   const lines = raw.split('\n');
   const filesChanged = lines.filter((l) => l.startsWith('diff --git')).length;
   const truncated = lines.length > maxLines;
   const diff = truncated ? lines.slice(0, maxLines).join('\n') : raw;
   return { diff, truncated, total_lines: lines.length, files_changed: filesChanged };
+}
+
+export async function getPullRequestDiff(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    id: number;
+    maxLines?: number;
+    path?: string | string[];
+    context?: number;
+  }
+): Promise<TruncatedDiff> {
+  const raw = await api.pullRequests.getDiff(params.workspace, params.repo, params.id, {
+    path: params.path,
+    context: params.context,
+  });
+  return truncateDiff(raw, params.maxLines ?? DEFAULT_DIFF_MAX_LINES);
 }
 
 export async function listPullRequestComments(
@@ -354,6 +431,7 @@ export async function listPullRequestComments(
     pagelen: clampPagelen(params.pagelen),
     q: params.query,
     sort: params.sort,
+    fields: listFields(COMMENT_FIELDS),
   });
   return toPage(response, presentComment, page);
 }
@@ -366,7 +444,8 @@ export async function getComment(
     params.workspace,
     params.repo,
     params.prId,
-    params.commentId
+    params.commentId,
+    { fields: objectFields(COMMENT_FIELDS) }
   );
   return presentComment(comment);
 }
@@ -379,6 +458,7 @@ export async function listPullRequestTasks(
   const response = await api.tasks.list(params.workspace, params.repo, params.id, {
     page,
     pagelen: clampPagelen(params.pagelen),
+    fields: listFields(TASK_FIELDS),
   });
   return toPage(response, presentTask, page);
 }
@@ -387,7 +467,9 @@ export async function getTask(
   api: BitbucketAPI,
   params: { workspace: string; repo: string; prId: number; taskId: number }
 ): Promise<Record<string, unknown>> {
-  const task = await api.tasks.get(params.workspace, params.repo, params.prId, params.taskId);
+  const task = await api.tasks.get(params.workspace, params.repo, params.prId, params.taskId, {
+    fields: objectFields(TASK_FIELDS),
+  });
   return presentTask(task);
 }
 
@@ -401,6 +483,7 @@ export async function listBranches(
     pagelen: clampPagelen(params.pagelen),
     q: params.query,
     sort: params.sort,
+    fields: listFields(BRANCH_FIELDS),
   });
   return toPage(response, presentBranch, page);
 }
@@ -409,7 +492,9 @@ export async function getBranch(
   api: BitbucketAPI,
   params: { workspace: string; repo: string; name: string }
 ): Promise<Record<string, unknown>> {
-  const branch = await api.branches.get(params.workspace, params.repo, params.name);
+  const branch = await api.branches.get(params.workspace, params.repo, params.name, {
+    fields: objectFields(BRANCH_FIELDS),
+  });
   return presentBranch(branch);
 }
 
@@ -418,6 +503,12 @@ export async function getBranch(
 export type PipelineStatus = 'pending' | 'in_progress' | 'successful' | 'failed' | 'stopped';
 
 const DEFAULT_LOG_TAIL = 500;
+/**
+ * Byte window pulled from the end of a step log via a suffix `Range` request
+ * when the caller isn't grepping (256 KiB comfortably holds the default
+ * `DEFAULT_LOG_TAIL` lines while avoiding a multi-MB download).
+ */
+const DEFAULT_LOG_RANGE_BYTES = 256 * 1024;
 
 /**
  * Build a Bitbucket `q=` filter from branch / PR / status. Bitbucket's query
@@ -449,9 +540,10 @@ export async function listPipelines(
   const page = params.page ?? 1;
   const response = await api.pipelines.list(params.workspace, params.repo, {
     page,
-    pagelen: params.pagelen ?? DEFAULT_PAGELEN,
+    pagelen: clampPagelen(params.pagelen),
     q: params.query ?? buildPipelineQuery(params),
     sort: params.sort ?? '-created_on',
+    fields: listFields(PIPELINE_SUMMARY_FIELDS),
   });
   return toPage(response, presentPipelineSummary, page);
 }
@@ -460,7 +552,9 @@ export async function getPipeline(
   api: BitbucketAPI,
   params: { workspace: string; repo: string; pipeline: string }
 ): Promise<Record<string, unknown>> {
-  const pipeline = await api.pipelines.get(params.workspace, params.repo, params.pipeline);
+  const pipeline = await api.pipelines.get(params.workspace, params.repo, params.pipeline, {
+    fields: objectFields(PIPELINE_DETAIL_FIELDS),
+  });
   return presentPipeline(pipeline);
 }
 
@@ -471,7 +565,8 @@ export async function listPipelineSteps(
   const page = params.page ?? 1;
   const response = await api.pipelines.listSteps(params.workspace, params.repo, params.pipeline, {
     page,
-    pagelen: params.pagelen ?? DEFAULT_PAGELEN,
+    pagelen: clampPagelen(params.pagelen),
+    fields: listFields(PIPELINE_STEP_FIELDS),
   });
   return toPage(response, presentPipelineStep, page);
 }
@@ -488,6 +583,12 @@ export interface StepLog {
  * often MB+). `grep` filters to matching lines before tailing; `maxBytes` caps
  * the returned text. In-progress steps with no log yet return empty rather than
  * erroring.
+ *
+ * To avoid downloading a multi-MB log just to keep its tail, the fetch uses an
+ * HTTP suffix `Range` request for the last window of bytes. Grepping is the
+ * exception: a `grep` must search the *entire* log, so that path fetches the
+ * full body. If the server can't satisfy the range (`416`) we transparently
+ * refetch in full.
  */
 export async function getStepLog(
   api: BitbucketAPI,
@@ -501,23 +602,42 @@ export async function getStepLog(
     maxBytes?: number;
   }
 ): Promise<StepLog> {
-  let raw: string;
+  // grep must see the whole log; otherwise pull only the tail window of bytes.
+  const rangeBytes = Math.max(1, Math.floor(params.maxBytes ?? DEFAULT_LOG_RANGE_BYTES));
+  const initialRange = params.grep ? undefined : `bytes=-${rangeBytes}`;
+
+  let log: { text: string; totalBytes?: number; partial: boolean };
   try {
-    raw = await api.pipelines.getStepLog(
+    log = await api.pipelines.getStepLog(
       params.workspace,
       params.repo,
       params.pipeline,
-      params.step
+      params.step,
+      initialRange
     );
   } catch (error) {
     if (error instanceof NotFoundError) {
       return { text: '', total_bytes: 0, truncated: false, returned_lines: 0 };
     }
-    throw error;
+    // Range not satisfiable — refetch the whole log without a Range header.
+    if (initialRange && error instanceof BitbucketError && error.statusCode === 416) {
+      log = await api.pipelines.getStepLog(
+        params.workspace,
+        params.repo,
+        params.pipeline,
+        params.step
+      );
+    } else {
+      throw error;
+    }
   }
 
-  const totalBytes = Buffer.byteLength(raw, 'utf8');
-  let truncated = false;
+  const raw = log.text;
+  const fetchedBytes = Buffer.byteLength(raw, 'utf8');
+  const totalBytes = log.totalBytes ?? fetchedBytes;
+  // Truncated if we only pulled a slice of a larger log, regardless of later
+  // line/byte trimming.
+  let truncated = log.partial || totalBytes > fetchedBytes;
 
   let lines = raw.split('\n');
   if (params.grep) {
@@ -547,7 +667,8 @@ export async function listSchedules(
   const page = params.page ?? 1;
   const response = await api.pipelines.listSchedules(params.workspace, params.repo, {
     page,
-    pagelen: params.pagelen ?? DEFAULT_PAGELEN,
+    pagelen: clampPagelen(params.pagelen),
+    fields: listFields(SCHEDULE_FIELDS),
   });
   return toPage(response, presentSchedule, page);
 }
@@ -592,6 +713,7 @@ export async function listRepositories(
     pagelen,
     q: params.query,
     sort: params.sort,
+    fields: listFields(REPOSITORY_FIELDS),
   });
   return {
     repos: (response.values ?? []).map(presentRepository),
@@ -605,6 +727,319 @@ export async function getRepository(
   api: BitbucketAPI,
   params: { workspace: string; repo: string }
 ): Promise<Record<string, unknown>> {
-  const repo = await api.repositories.get(params.workspace, params.repo);
+  const repo = await api.repositories.get(params.workspace, params.repo, {
+    fields: objectFields(REPOSITORY_FIELDS),
+  });
   return presentRepository(repo);
+}
+
+// Source / commits / tags -----------------------------------------------------
+
+/** Default byte window pulled from the head of a file when no cap is given. */
+const DEFAULT_FILE_BYTES = 128 * 1024;
+
+/** A page that also echoes the resolved ref and path it was taken at. */
+type RefPage = Page<Record<string, unknown>> & { ref: string; path: string };
+
+/**
+ * Resolve a source ref: return the caller's value, or fall back to the repo's
+ * default branch (one cheap metadata call) so browsing tools work without the
+ * caller knowing the main branch name.
+ */
+async function resolveRef(
+  api: BitbucketAPI,
+  workspace: string,
+  repo: string,
+  ref?: string
+): Promise<string> {
+  const trimmed = ref?.trim();
+  if (trimmed) return trimmed;
+  const meta = await api.repositories.get(workspace, repo, { fields: 'mainbranch.name' });
+  const name = meta.mainbranch?.name;
+  if (!name) {
+    throw new Error(
+      'Could not resolve the default branch; pass an explicit commit, branch, or tag ref'
+    );
+  }
+  return name;
+}
+
+/**
+ * List a directory's entries at a commit/branch/tag (defaults to the repo's
+ * main branch). `max_depth` recurses into subdirectories in one call. Echoes the
+ * resolved `ref` and `path` so a caller that relied on the default knows what
+ * was listed.
+ */
+export async function listDirectory(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    commit?: string;
+    path?: string;
+    maxDepth?: number;
+    page?: number;
+    pagelen?: number;
+    query?: string;
+    sort?: string;
+  }
+): Promise<RefPage> {
+  const ref = await resolveRef(api, params.workspace, params.repo, params.commit);
+  const path = params.path ?? '';
+  const page = params.page ?? 1;
+  const response = await api.source.listDirectory(params.workspace, params.repo, ref, path, {
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    q: params.query,
+    sort: params.sort,
+    maxDepth: params.maxDepth,
+    fields: listFields(TREE_ENTRY_FIELDS),
+  });
+  return { ...toPage(response, presentTreeEntry, page), ref, path };
+}
+
+export interface FileContent {
+  path: string;
+  ref: string;
+  size?: number;
+  mimetype?: string;
+  commit?: string;
+  url?: string;
+  /** Present for text files; omitted for binary. */
+  content?: string;
+  /** True for binary files, whose bytes are not returned as text. */
+  binary?: boolean;
+  truncated: boolean;
+  total_bytes: number;
+}
+
+/**
+ * Fetch a file's contents at a commit/branch/tag (defaults to the main branch),
+ * capped to `maxBytes` (fetched via a prefix `Range` when supported) and
+ * optionally `maxLines`. Binary files (detected by a NUL byte) return metadata
+ * with `binary: true` and no `content`, since raw bytes as text are useless to
+ * an LLM.
+ */
+export async function getFile(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    commit?: string;
+    path: string;
+    maxLines?: number;
+    maxBytes?: number;
+  }
+): Promise<FileContent> {
+  if (!params.path) {
+    throw new Error('path is required');
+  }
+  const ref = await resolveRef(api, params.workspace, params.repo, params.commit);
+  const meta = await api.source.getFileMeta(params.workspace, params.repo, ref, params.path, {
+    fields: objectFields(FILE_META_FIELDS),
+  });
+  const presented = presentFileMeta(meta) as {
+    path?: string;
+    size?: number;
+    mimetype?: string;
+    commit?: string;
+    url?: string;
+  };
+
+  const maxBytes = Math.max(1, Math.floor(params.maxBytes ?? DEFAULT_FILE_BYTES));
+  let fetched: { text: string; totalBytes?: number; partial: boolean };
+  try {
+    fetched = await api.source.getFileContent(
+      params.workspace,
+      params.repo,
+      ref,
+      params.path,
+      `bytes=0-${maxBytes - 1}`
+    );
+  } catch (error) {
+    if (error instanceof BitbucketError && error.statusCode === 416) {
+      fetched = await api.source.getFileContent(params.workspace, params.repo, ref, params.path);
+    } else {
+      throw error;
+    }
+  }
+
+  const raw = fetched.text;
+  const fetchedBytes = Buffer.byteLength(raw, 'utf8');
+  const totalBytes = fetched.totalBytes ?? meta.size ?? fetchedBytes;
+  const base = {
+    path: presented.path ?? params.path,
+    ref,
+    size: presented.size,
+    mimetype: presented.mimetype,
+    commit: presented.commit,
+    url: presented.url,
+  };
+
+  // A NUL byte means binary content — don't return it as text.
+  if (raw.includes('\u0000')) {
+    return { ...base, binary: true, truncated: false, total_bytes: totalBytes };
+  }
+
+  let truncated = fetched.partial || totalBytes > fetchedBytes;
+  let lines = raw.split('\n');
+  if (params.maxLines && lines.length > params.maxLines) {
+    lines = lines.slice(0, params.maxLines);
+    truncated = true;
+  }
+
+  let text = lines.join('\n');
+  // If the server ignored the Range, enforce the byte cap client-side.
+  if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+    text = Buffer.from(text, 'utf8').subarray(0, maxBytes).toString('utf8');
+    truncated = true;
+  }
+
+  return { ...base, content: text, truncated, total_bytes: totalBytes };
+}
+
+/**
+ * List the commits that modified a file (newest first, following renames by
+ * default) at a commit/branch/tag ref (defaults to the main branch).
+ */
+export async function getFileHistory(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    commit?: string;
+    path: string;
+    renames?: boolean;
+    page?: number;
+    pagelen?: number;
+  }
+): Promise<RefPage> {
+  if (!params.path) {
+    throw new Error('path is required');
+  }
+  const ref = await resolveRef(api, params.workspace, params.repo, params.commit);
+  const page = params.page ?? 1;
+  const response = await api.source.getFileHistory(
+    params.workspace,
+    params.repo,
+    ref,
+    params.path,
+    {
+      page,
+      pagelen: clampPagelen(params.pagelen),
+      renames: params.renames,
+      fields: listFields(FILE_HISTORY_FIELDS),
+    }
+  );
+  return { ...toPage(response, presentFileHistoryEntry, page), ref, path: params.path };
+}
+
+/**
+ * List commits. `at` (a branch/tag/hash) scopes to commits reachable from that
+ * ref; `path` filters to commits touching a file. Note the commits endpoint is
+ * git-backed and omits a total count.
+ */
+export async function listCommits(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    at?: string;
+    path?: string;
+    page?: number;
+    pagelen?: number;
+  }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.commits.list(params.workspace, params.repo, {
+    include: params.at ? [params.at] : undefined,
+    path: params.path,
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    fields: listFields(COMMIT_FIELDS),
+  });
+  return toPage(response, presentCommit, page);
+}
+
+export async function getCommit(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; commit: string }
+): Promise<Record<string, unknown>> {
+  const commit = await api.commits.get(params.workspace, params.repo, params.commit, {
+    fields: objectFields(COMMIT_FIELDS),
+  });
+  return presentCommit(commit);
+}
+
+/**
+ * Get the diff for a commit hash or `a..b` spec, capped to `maxLines`. `path`
+ * scopes to specific files and `context` sets hunk context — both trim the
+ * payload server-side.
+ */
+export async function getCommitDiff(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    spec: string;
+    maxLines?: number;
+    path?: string | string[];
+    context?: number;
+  }
+): Promise<TruncatedDiff> {
+  const raw = await api.commits.getDiff(params.workspace, params.repo, params.spec, {
+    path: params.path,
+    context: params.context,
+  });
+  return truncateDiff(raw, params.maxLines ?? DEFAULT_DIFF_MAX_LINES);
+}
+
+/**
+ * Get the per-file diffstat (change kind + lines added/removed) for a commit
+ * hash or `a..b` spec — a cheap "what changed" summary without the diff body.
+ */
+export async function getDiffstat(
+  api: BitbucketAPI,
+  params: {
+    workspace: string;
+    repo: string;
+    spec: string;
+    path?: string;
+    page?: number;
+    pagelen?: number;
+  }
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.commits.getDiffstat(params.workspace, params.repo, params.spec, {
+    path: params.path,
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    fields: listFields(DIFFSTAT_FIELDS),
+  });
+  return toPage(response, presentDiffstat, page);
+}
+
+export async function listTags(
+  api: BitbucketAPI,
+  params: ListParams
+): Promise<Page<Record<string, unknown>>> {
+  const page = params.page ?? 1;
+  const response = await api.tags.list(params.workspace, params.repo, {
+    page,
+    pagelen: clampPagelen(params.pagelen),
+    q: params.query,
+    sort: params.sort,
+    fields: listFields(TAG_FIELDS),
+  });
+  return toPage(response, presentTag, page);
+}
+
+export async function getTag(
+  api: BitbucketAPI,
+  params: { workspace: string; repo: string; name: string }
+): Promise<Record<string, unknown>> {
+  const tag = await api.tags.get(params.workspace, params.repo, params.name, {
+    fields: objectFields(TAG_FIELDS),
+  });
+  return presentTag(tag);
 }

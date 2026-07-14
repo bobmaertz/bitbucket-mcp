@@ -10,3 +10,6 @@ export * from './comments.js';
 export * from './tasks.js';
 export * from './branches.js';
 export * from './pipelines.js';
+export * from './source.js';
+export * from './commits.js';
+export * from './tags.js';

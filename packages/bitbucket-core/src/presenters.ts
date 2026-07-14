@@ -12,6 +12,11 @@ import type {
   PipelineSchedule,
   PipelineTarget,
   PipelineVariable,
+  TreeEntry,
+  FileMeta,
+  DiffStat,
+  Tag,
+  FileHistoryEntry,
 } from '@bobmaertz/bitbucket-api';
 
 /**
@@ -199,6 +204,71 @@ export function presentCommit(commit: Commit): Record<string, unknown> {
   });
 }
 
+// Source / commits / tags -----------------------------------------------------
+
+/** Normalize a `commit_file`/`commit_directory` discriminator to `file`/`dir`. */
+function entryKind(type: string | undefined): 'file' | 'dir' {
+  return type === 'commit_directory' ? 'dir' : 'file';
+}
+
+/** Lean directory-entry shape. `size`/`mimetype` apply to files only. */
+export function presentTreeEntry(entry: TreeEntry): Record<string, unknown> {
+  return compact({
+    path: entry.path,
+    type: entryKind(entry.type),
+    size: entry.size,
+    mimetype: entry.mimetype ?? undefined,
+  });
+}
+
+/** File metadata (size/mimetype/commit) without the bytes. */
+export function presentFileMeta(meta: FileMeta): Record<string, unknown> {
+  return compact({
+    path: meta.path,
+    size: meta.size,
+    mimetype: meta.mimetype ?? undefined,
+    commit: shortHash(meta.commit?.hash),
+    url: htmlUrl(meta.links),
+  });
+}
+
+/**
+ * One file's change summary. `path` is the post-change path; `old_path` is added
+ * only for renames so a caller can see the move.
+ */
+export function presentDiffstat(stat: DiffStat): Record<string, unknown> {
+  return compact({
+    status: stat.status,
+    path: stat.new?.path ?? stat.old?.path,
+    old_path: stat.status === 'renamed' ? stat.old?.path : undefined,
+    lines_added: stat.lines_added,
+    lines_removed: stat.lines_removed,
+  });
+}
+
+/**
+ * Tag shape. `date`/`message`/`tagger` are populated for annotated tags; a
+ * lightweight tag falls back to the target commit's date.
+ */
+export function presentTag(tag: Tag): Record<string, unknown> {
+  return compact({
+    name: tag.name,
+    target_hash: shortHash(tag.target?.hash),
+    date: tag.date ?? tag.target?.date,
+    message: tag.message?.trim(),
+    tagger: tag.tagger?.user?.display_name ?? tag.tagger?.raw,
+    url: htmlUrl(tag.links),
+  });
+}
+
+/** A file-history entry: the commit that touched the file, plus its path then. */
+export function presentFileHistoryEntry(entry: FileHistoryEntry): Record<string, unknown> {
+  return compact({
+    ...presentCommit(entry.commit),
+    path: entry.path,
+  });
+}
+
 // Pipelines -------------------------------------------------------------------
 
 /** Map a `pipeline_trigger_*` discriminator to push|manual|schedule. */
@@ -297,4 +367,205 @@ export function presentSchedule(schedule: PipelineSchedule): Record<string, unkn
     }),
     type: schedule.type,
   });
+}
+
+// Partial-response field sets --------------------------------------------------
+//
+// Each constant lists exactly the object-relative dotted paths its presenter
+// reads. They are sent to Bitbucket as the `fields` query param so the server
+// trims the payload before serializing it — the same fields the presenter would
+// keep, but dropped at the source instead of after a full download.
+//
+// These MUST stay in sync with the presenter above each one: if a presenter
+// starts reading a new field that isn't listed here, that field is silently
+// dropped from the response. `presenters.fields.test.ts` guards against exactly
+// that drift by projecting a fixture down to these paths and asserting the
+// presenter produces identical output.
+
+/** Fields read by {@link presentPullRequestSummary}. */
+export const PR_SUMMARY_FIELDS = [
+  'id',
+  'title',
+  'state',
+  'author.display_name',
+  'source.branch.name',
+  'destination.branch.name',
+  'comment_count',
+  'task_count',
+  'updated_on',
+  'links.html.href',
+] as const;
+
+/** Fields read by {@link presentUserPullRequestSummary}. */
+export const USER_PR_SUMMARY_FIELDS = [
+  ...PR_SUMMARY_FIELDS,
+  'destination.repository.full_name',
+] as const;
+
+/** Fields read by {@link presentPullRequest}. */
+export const PR_DETAIL_FIELDS = [
+  ...PR_SUMMARY_FIELDS,
+  'description',
+  'created_on',
+  'reviewers.display_name',
+  'participants.user.display_name',
+  'participants.role',
+  'participants.approved',
+] as const;
+
+/** Fields read by {@link presentComment}. */
+export const COMMENT_FIELDS = [
+  'id',
+  'user.display_name',
+  'content.raw',
+  'created_on',
+  'inline.path',
+  'inline.from',
+  'inline.to',
+  'resolution.user.display_name',
+  'resolution.created_on',
+  'parent.id',
+  'deleted',
+] as const;
+
+/** Fields read by {@link presentTask}. */
+export const TASK_FIELDS = [
+  'id',
+  'content.raw',
+  'state',
+  'creator.display_name',
+  'created_on',
+] as const;
+
+/** Fields read by {@link presentBranch}. */
+export const BRANCH_FIELDS = [
+  'name',
+  'target.hash',
+  'target.date',
+  'target.author.display_name',
+  'target.message',
+] as const;
+
+/** Fields read by {@link presentRepository}. */
+export const REPOSITORY_FIELDS = [
+  'full_name',
+  'slug',
+  'is_private',
+  'description',
+  'language',
+  'project.key',
+  'mainbranch.name',
+  'updated_on',
+  'links.html.href',
+] as const;
+
+/** Fields read by {@link presentCommit}. */
+export const COMMIT_FIELDS = ['hash', 'message', 'author.raw', 'date'] as const;
+
+/** Fields read by {@link presentTreeEntry}. */
+export const TREE_ENTRY_FIELDS = ['path', 'type', 'size', 'mimetype'] as const;
+
+/** Fields read by {@link presentFileMeta}. */
+export const FILE_META_FIELDS = [
+  'path',
+  'size',
+  'mimetype',
+  'commit.hash',
+  'links.html.href',
+] as const;
+
+/** Fields read by {@link presentDiffstat}. */
+export const DIFFSTAT_FIELDS = [
+  'status',
+  'new.path',
+  'old.path',
+  'lines_added',
+  'lines_removed',
+] as const;
+
+/** Fields read by {@link presentTag}. */
+export const TAG_FIELDS = [
+  'name',
+  'target.hash',
+  'target.date',
+  'date',
+  'message',
+  'tagger.user.display_name',
+  'tagger.raw',
+  'links.html.href',
+] as const;
+
+/** Fields read by {@link presentFileHistoryEntry}. */
+export const FILE_HISTORY_FIELDS = [
+  'path',
+  'commit.hash',
+  'commit.message',
+  'commit.author.raw',
+  'commit.date',
+] as const;
+
+/** Fields read by {@link presentPipelineSummary} (and {@link presentTarget}). */
+export const PIPELINE_SUMMARY_FIELDS = [
+  'build_number',
+  'uuid',
+  'state.name',
+  'state.result.name',
+  'trigger.type',
+  'target.type',
+  'target.ref_type',
+  'target.ref_name',
+  'target.source',
+  'target.commit.hash',
+  'target.pullrequest.id',
+  'created_on',
+  'build_seconds_used',
+] as const;
+
+/** Fields read by {@link presentPipeline}. */
+export const PIPELINE_DETAIL_FIELDS = [
+  ...PIPELINE_SUMMARY_FIELDS,
+  'creator.display_name',
+  'completed_on',
+  'variables.key',
+  'variables.value',
+  'variables.secured',
+] as const;
+
+/** Fields read by {@link presentPipelineStep}. */
+export const PIPELINE_STEP_FIELDS = [
+  'uuid',
+  'name',
+  'state.name',
+  'state.result.name',
+  'started_on',
+  'completed_on',
+  'duration_in_seconds',
+] as const;
+
+/** Fields read by {@link presentSchedule}. */
+export const SCHEDULE_FIELDS = [
+  'uuid',
+  'enabled',
+  'cron_pattern',
+  'target.ref_name',
+  'target.ref_type',
+  'target.selector.pattern',
+  'type',
+] as const;
+
+/**
+ * Format a field set for a single-object GET: the paths joined verbatim, e.g.
+ * `id,title,state`.
+ */
+export function objectFields(paths: readonly string[]): string {
+  return paths.join(',');
+}
+
+/**
+ * Format a field set for a paginated GET: each path prefixed with `values.` and
+ * the envelope keys needed downstream (`next` drives `has_more`, `size` drives
+ * `total`) appended — e.g. `values.id,values.title,next,size`.
+ */
+export function listFields(paths: readonly string[]): string {
+  return [...paths.map((p) => `values.${p}`), 'next', 'size'].join(',');
 }

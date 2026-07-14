@@ -17,6 +17,18 @@ describe('loadConfig', () => {
     expect(config.allowWrites).toBe(false);
   });
 
+  it('prefers an access token over API-token and legacy fields', () => {
+    const config = loadConfig({
+      ...base,
+      BITBUCKET_ACCESS_TOKEN: 'ATCTT-abc',
+      BITBUCKET_USERNAME: 'legacy',
+      BITBUCKET_APP_PASSWORD: 'pw',
+    });
+    expect(config.usedAccessToken).toBe(true);
+    expect(config.usedLegacyAuth).toBe(false);
+    expect(config.auth).toEqual({ accessToken: 'ATCTT-abc' });
+  });
+
   it('falls back to legacy username/app-password', () => {
     const config = loadConfig({
       BITBUCKET_WORKSPACE: 'acme',
@@ -63,6 +75,12 @@ describe('validateConfig', () => {
     });
     expect(() => validateConfig(config)).toThrow(/Legacy auth requires/);
   });
+
+  it('passes a valid access-token config', () => {
+    expect(() =>
+      validateConfig(loadConfig({ BITBUCKET_WORKSPACE: 'acme', BITBUCKET_ACCESS_TOKEN: 'ATCTT-x' }))
+    ).not.toThrow();
+  });
 });
 
 describe('publicConfig', () => {
@@ -70,5 +88,13 @@ describe('publicConfig', () => {
     const summary = publicConfig(loadConfig(base));
     expect(summary.authMode).toBe('api-token');
     expect(JSON.stringify(summary)).not.toContain('token123');
+  });
+
+  it('reports access-token mode without leaking the token', () => {
+    const summary = publicConfig(
+      loadConfig({ BITBUCKET_WORKSPACE: 'acme', BITBUCKET_ACCESS_TOKEN: 'ATCTT-secret' })
+    );
+    expect(summary.authMode).toBe('access-token');
+    expect(JSON.stringify(summary)).not.toContain('ATCTT-secret');
   });
 });

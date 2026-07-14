@@ -1,6 +1,7 @@
 import type { BitbucketClient } from '../client.js';
 import type { Branch, CreateBranchParams, PaginatedResponse, ListOptions } from '../types/index.js';
 import { seg } from '../utils/path.js';
+import { buildListQuery, type FieldOptions } from '../utils/query.js';
 
 /**
  * Branches resource API
@@ -16,16 +17,9 @@ export class BranchesResource {
     repoSlug: string,
     options?: ListOptions
   ): Promise<PaginatedResponse<Branch>> {
-    const params = new URLSearchParams();
-
-    if (options?.page) params.append('page', options.page.toString());
-    if (options?.pagelen) params.append('pagelen', options.pagelen.toString());
-    if (options?.q) params.append('q', options.q);
-    if (options?.sort) params.append('sort', options.sort);
-
-    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/refs/branches${
-      params.toString() ? `?${params.toString()}` : ''
-    }`;
+    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/refs/branches${buildListQuery(
+      options
+    )}`;
 
     return this.client.get<PaginatedResponse<Branch>>(path);
   }
@@ -33,10 +27,17 @@ export class BranchesResource {
   /**
    * Get a specific branch
    */
-  async get(workspace: string, repoSlug: string, branchName: string): Promise<Branch> {
+  async get(
+    workspace: string,
+    repoSlug: string,
+    branchName: string,
+    options?: FieldOptions
+  ): Promise<Branch> {
     // Branch names may contain slashes, need to encode properly
     const encodedBranchName = encodeURIComponent(branchName);
-    const path = `/repositories/${seg(workspace)}/${seg(repoSlug)}/refs/branches/${encodedBranchName}`;
+    const path = `/repositories/${seg(workspace)}/${seg(
+      repoSlug
+    )}/refs/branches/${encodedBranchName}${buildListQuery(options)}`;
     return this.client.get<Branch>(path);
   }
 
