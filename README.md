@@ -37,6 +37,16 @@ Auth is resolved in precedence order: an **access token** (Bearer) wins, then th
 | `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN`       | User API token (Basic). Minted at id.atlassian.com. Used when no access token is set.  |
 | `BITBUCKET_USERNAME` + `BITBUCKET_APP_PASSWORD` | Deprecated app-password fallback. App Passwords are being removed by Atlassian (2026). |
 
+## Logging
+
+All logs go to **stderr** — stdout is reserved for the MCP protocol, so the server never writes log lines there and never writes its own log files. Where stderr ends up depends on how the server is run:
+
+- **Claude Desktop** captures each MCP server's stderr to a log file: `~/Library/Logs/Claude/mcp-server-bitbucket.log` on macOS, `%APPDATA%\Claude\logs\mcp-server-bitbucket.log` on Windows (the filename uses the server's key from your config).
+- **Claude Code** shows MCP server stderr when run with `claude --debug`, or via `/mcp` for server status.
+- **Run directly** (e.g. `npx @bobmaertz/bitbucket-mcp` in a terminal), log lines appear in the terminal.
+
+Lines are prefixed with their level (`[debug]`, `[info]`, `[warn]`, `[error]`); `LOG_LEVEL` (default `info`) sets the minimum level emitted. What gets logged: startup configuration at `debug` (useful for troubleshooting auth/workspace resolution), deprecation and rate-limit warnings at `warn`, and failed tool calls at `error`. Every line is scrubbed for credential-looking substrings before it is written, so tokens and passwords never appear in logs — even at `debug`.
+
 ## Tools
 
 Read-only. `workspace` defaults to `BITBUCKET_WORKSPACE`; repo-scoped tools require `repo`.
