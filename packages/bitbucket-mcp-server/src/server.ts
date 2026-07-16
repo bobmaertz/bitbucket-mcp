@@ -13,6 +13,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { createApi, createLogger, type CoreConfig } from '@bobmaertz/bitbucket-core';
 import { readOnlyTools, handlers, type ToolContext } from './tools.js';
+import { SERVER_INSTRUCTIONS } from './instructions.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
@@ -24,7 +25,7 @@ const { version } = require('../package.json') as { version: string };
 export function createServer(config: CoreConfig): Server {
   const server = new Server(
     { name: 'bitbucket-mcp-server', version },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS }
   );
 
   const logger = createLogger(config.logLevel);
